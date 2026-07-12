@@ -1,61 +1,89 @@
-import { nanoid } from '@dineug/shared';
-import { omit } from 'lodash-es';
+import { debounce } from 'lodash-es';
 
-import { EntityType } from '@/internal-types';
-import type { AppDatabase } from '@/services/indexeddb/appDatabaseService';
+import { api } from '@/utils/api';
 
-export type SchemaEntity = EntityType<{
+export type SchemaEntity = {
+  id: string;
+  projectId: string;
   name: string;
   value: string;
-}>;
+  createAt: number;
+  updateAt: number;
+};
 
 export async function addSchemaEntity(
-  db: AppDatabase,
+  db: any,
+  projectId: string,
   entityValue: Pick<SchemaEntity, 'name'>
 ): Promise<SchemaEntity> {
-  const table = db.table<SchemaEntity>('schemas');
-  const now = Date.now();
-  const entity: SchemaEntity = {
-    ...entityValue,
-    id: nanoid(),
-    value: '',
-    createAt: now,
-    updateAt: now,
+  const result = await api.createSchema(projectId, entityValue.name);
+  return {
+    id: result.id,
+    projectId: result.projectId,
+    name: result.name,
+    value: result.value,
+    createAt: new Date(result.createdAt).getTime(),
+    updateAt: new Date(result.updatedAt).getTime(),
   };
-
-  await table.add(entity);
-  return entity;
 }
 
+const debouncedSaveMap = new Map<string, (value: string) => void>();
+
 export async function updateSchemaEntity(
-  db: AppDatabase,
+  db: any,
   id: string,
   entityValue: Partial<Pick<SchemaEntity, 'value' | 'name'>>
 ) {
-  const table = db.table<SchemaEntity>('schemas');
-  const updateCount = await table.update(id, {
-    ...entityValue,
-    updateAt: Date.now(),
-  });
-  return updateCount === 1;
+  if (entityValue.name !== undefined) {
+    await api.updateSchema(id, { name: entityValue.name });
+  }
+
+  if (entityValue.value !== undefined) {
+    let debouncedSave = debouncedSaveMap.get(id);
+    if (!debouncedSave) {
+      debouncedSave = debounce(async (val: string) => {
+        try {
+          await api.updateSchema(id, { value: val });
+        } catch (error) {
+          console.error('Error auto-saving schema:', error);
+        }
+      }, 2000);
+      debouncedSaveMap.set(id, debouncedSave);
+    }
+    debouncedSave(entityValue.value);
+  }
+  return true;
 }
 
-export async function deleteSchemaEntity(db: AppDatabase, id: string) {
-  const table = db.table<SchemaEntity>('schemas');
-  await table.delete(id);
+export async function deleteSchemaEntity(db: any, id: string) {
+  await api.deleteSchema(id);
 }
 
 export async function getSchemaEntity(
-  db: AppDatabase,
+  db: any,
   id: string
 ): Promise<SchemaEntity | undefined> {
-  const table = db.table<SchemaEntity>('schemas');
-  return await table.get(id);
+  const result = await api.getSchema(id);
+  return {
+    id: result.id,
+    projectId: result.projectId,
+    name: result.name,
+    value: result.value,
+    createAt: new Date(result.createdAt).getTime(),
+    updateAt: new Date(result.updatedAt).getTime(),
+  };
 }
 
 export async function getSchemaEntities(
-  db: AppDatabase
+  db: any,
+  projectId: string
 ): Promise<Array<Omit<SchemaEntity, 'value'>>> {
-  const list = await db.table<SchemaEntity>('schemas').toArray();
-  return list.map(item => omit(item, 'value'));
+  const list = await api.getSchemas(projectId);
+  return list.map(item => ({
+    id: item.id,
+    projectId: item.projectId,
+    name: item.name,
+    createAt: new Date(item.createdAt).getTime(),
+    updateAt: new Date(item.updatedAt).getTime(),
+  }));
 }

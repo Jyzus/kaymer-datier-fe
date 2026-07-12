@@ -2,9 +2,10 @@ import {
   ErdEditorElement,
   setGetShikiServiceCallback,
 } from '@dineug/erd-editor';
-import { useAtom, useAtomValue } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useLayoutEffect, useRef } from 'react';
 
+import { activeEditorAtom } from '@/atoms/modules/ai-chat';
 import { nicknameStorageAtom } from '@/atoms/modules/collaborative';
 import { useReplicationSchemaEntity } from '@/atoms/modules/sidebar';
 import { themeAtom } from '@/atoms/modules/theme';
@@ -29,6 +30,7 @@ const Editor: React.FC<EditorProps> = props => {
   const nickname = useAtomValue(nicknameStorageAtom);
   const nicknameRef = useRef(nickname);
   nicknameRef.current = nickname;
+  const setActiveEditor = useSetAtom(activeEditorAtom);
 
   useLayoutEffect(() => {
     const $viewer = viewerRef.current;
@@ -40,6 +42,7 @@ const Editor: React.FC<EditorProps> = props => {
       getNickname: () => nicknameRef.current,
     });
     editorRef.current = editor;
+    setActiveEditor(editor);
     editor.enableThemeBuilder = true;
     editor.setInitialValue(props.entity.value);
 
@@ -76,6 +79,7 @@ const Editor: React.FC<EditorProps> = props => {
     $viewer.appendChild(editor);
 
     return () => {
+      setActiveEditor(null);
       $viewer.removeChild(editor);
       editor.removeEventListener('changePresetTheme', handleChangePresetTheme);
       Array.from(unsubscribeSet).forEach(unsubscribe => unsubscribe());

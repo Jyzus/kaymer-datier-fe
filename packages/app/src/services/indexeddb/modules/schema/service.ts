@@ -35,8 +35,8 @@ export class SchemaService {
     this.cache.set(entity.id, { ...entity, store });
   }
 
-  async add(entityValue: Pick<SchemaEntity, 'name'>) {
-    const result = await addSchemaEntity(this.db, entityValue);
+  async add(projectId: string, entityValue: Pick<SchemaEntity, 'name'>) {
+    const result = await addSchemaEntity(this.db, projectId, entityValue);
 
     this.createCache(result);
     return result;
@@ -80,8 +80,8 @@ export class SchemaService {
     return result;
   }
 
-  async getAll() {
-    return await getSchemaEntities(this.db);
+  async getAll(projectId: string) {
+    return await getSchemaEntities(this.db, projectId);
   }
 
   async replication(id: string, actions: any) {

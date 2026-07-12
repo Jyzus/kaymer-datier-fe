@@ -1,6 +1,7 @@
 import { atom, useAtomValue, useSetAtom } from 'jotai';
 import { atomWithImmer } from 'jotai-immer';
 
+import { selectedProjectIdAtom } from '@/atoms/modules/project';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 import { getAppDatabaseService } from '@/services/indexeddb';
 import { SchemaEntity } from '@/services/indexeddb/modules/schema';
@@ -16,10 +17,16 @@ export const schemaEntitiesAtom = atomWithImmer<
 >([]);
 
 const updateSchemaEntitiesAtom = atom(null, async (get, set) => {
+  const projectId = get(selectedProjectIdAtom);
+  if (!projectId) {
+    set(schemaEntitiesAtom, []);
+    return;
+  }
+
   const service = getAppDatabaseService();
   if (!service) throw new Error('Database service is not initialized');
 
-  const entities = await service.getSchemaEntities();
+  const entities = await service.getSchemaEntities(projectId);
   entities.sort((a, b) => {
     const nameA = a.name.toLowerCase();
     const nameB = b.name.toLowerCase();
@@ -31,10 +38,13 @@ const updateSchemaEntitiesAtom = atom(null, async (get, set) => {
 const addSchemaEntityAtom = atom(
   null,
   async (get, set, entityValue: Pick<SchemaEntity, 'name'>) => {
+    const projectId = get(selectedProjectIdAtom);
+    if (!projectId) throw new Error('No active project selected');
+
     const service = getAppDatabaseService();
     if (!service) throw new Error('Database service is not initialized');
 
-    const result = await service.addSchemaEntity(entityValue);
+    const result = await service.addSchemaEntity(projectId, entityValue);
 
     set(schemaEntitiesAtom, draft => {
       draft.push(result);

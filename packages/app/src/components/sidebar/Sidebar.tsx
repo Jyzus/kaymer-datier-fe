@@ -1,6 +1,7 @@
 import { Button, Flex, ScrollArea } from '@radix-ui/themes';
 import { useAtomValue } from 'jotai';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useUpdateCollaborativeSessionAll } from '@/atoms/modules/collaborative';
 import {
@@ -17,6 +18,7 @@ import * as styles from './Sidebar.styles';
 interface SidebarProps {}
 
 const Sidebar: React.FC<SidebarProps> = () => {
+  const navigate = useNavigate();
   const schemaEntities = useSchemaEntities();
   const updateSchemaEntities = useUpdateSchemaEntities();
   const updateCollaborativeSessionAll = useUpdateCollaborativeSessionAll();
@@ -43,7 +45,20 @@ const Sidebar: React.FC<SidebarProps> = () => {
         css={[styles.root, sashState.open ? null : styles.hide]}
         direction="column"
       >
-        <Flex css={styles.header}>
+        <Flex css={styles.header} direction="column" gap="2">
+          <Button
+            size="1"
+            variant="ghost"
+            onClick={() => navigate('/')}
+            style={{
+              alignSelf: 'flex-start',
+              paddingLeft: 0,
+              cursor: 'pointer',
+              color: 'var(--accent-11)',
+            }}
+          >
+            Proyectos
+          </Button>
           <Button
             css={styles.addButton}
             size="3"

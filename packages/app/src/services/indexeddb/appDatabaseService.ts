@@ -21,8 +21,11 @@ export class AppDatabaseService {
   #schemaService = new SchemaService(this.#db);
   #collaborativeService = new CollaborativeService(this.#schemaService);
 
-  async addSchemaEntity(entityValue: Pick<SchemaEntity, 'name'>) {
-    return await this.#schemaService.add(entityValue);
+  async addSchemaEntity(
+    projectId: string,
+    entityValue: Pick<SchemaEntity, 'name'>
+  ) {
+    return await this.#schemaService.add(projectId, entityValue);
   }
 
   async updateSchemaEntity(
@@ -40,8 +43,8 @@ export class AppDatabaseService {
     return await this.#schemaService.get(id);
   }
 
-  async getSchemaEntities() {
-    return await this.#schemaService.getAll();
+  async getSchemaEntities(projectId: string) {
+    return await this.#schemaService.getAll(projectId);
   }
 
   async replicationSchemaEntity(id: string, actions: any) {

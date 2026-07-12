@@ -12,6 +12,7 @@ import {
 } from 'react-router-dom';
 
 import App from '@/components/app/App';
+import Dashboard from '@/components/dashboard/Dashboard';
 import LiveCollaborativeError from '@/components/live-collaborative/live-collaborative-error/LiveCollaborativeError';
 import { registerSW } from '@/registerSW';
 import Root from '@/routes/root/Root';
@@ -33,6 +34,10 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <Dashboard />,
+      },
+      {
+        path: 'project/:projectId',
         element: <App />,
       },
       {

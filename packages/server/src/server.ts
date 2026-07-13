@@ -235,6 +235,9 @@ Instructions:
      CREATE TABLE users (...);
      \`\`\`
    - Do NOT mix text explanations within the SQL block. The UI will parse any \`\`\`sql block to let the user import it directly into their visual canvas.
+   - For modifications to existing tables (like adding columns), you can output the full updated \`CREATE TABLE table_name (...)\` statement. The merger will automatically overwrite the old table with the new definition.
+   - CRITICAL: If you rename a table, do NOT just output \`CREATE TABLE new_table_name (...)\`. You MUST output an explicit \`ALTER TABLE old_table_name RENAME TO new_table_name;\` statement so the system knows to rename the table instead of creating a duplicate table.
+   - Similarly, if you rename columns, prefer using explicit \`ALTER TABLE table_name RENAME COLUMN old_col TO new_col;\` statements.
 3. Be helpful, concise, and professional.`;
 
     const fullMessages = [

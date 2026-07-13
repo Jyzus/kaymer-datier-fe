@@ -14,6 +14,7 @@ import {
   Text,
   TextField,
 } from '@radix-ui/themes';
+import { useSetAtom } from 'jotai';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -25,6 +26,7 @@ import {
   useUpdateProject,
   useUpdateProjects,
 } from '@/atoms/modules/project';
+import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 
 import * as styles from './Dashboard.styles';
 
@@ -36,6 +38,7 @@ const Dashboard: React.FC = () => {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const setSelectedProjectId = useSetSelectedProjectId();
+  const setSelectedSchemaId = useSetAtom(selectedSchemaIdAtom);
 
   // Create Project Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -50,9 +53,10 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     updateProjects();
-    // Clear selected project when on the dashboard
+    // Clear selected project and schema when on the dashboard
     setSelectedProjectId(null);
-  }, [updateProjects, setSelectedProjectId]);
+    setSelectedSchemaId(null);
+  }, [updateProjects, setSelectedProjectId, setSelectedSchemaId]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();

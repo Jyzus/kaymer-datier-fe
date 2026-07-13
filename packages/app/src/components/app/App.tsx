@@ -1,8 +1,10 @@
 import { Flex } from '@radix-ui/themes';
+import { useSetAtom } from 'jotai';
 import React, { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { useSetSelectedProjectId } from '@/atoms/modules/project';
+import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 import { AiChatPanel, AiChatToggle } from '@/components/ai-chat/AiChatPanel';
 import Sidebar from '@/components/sidebar/Sidebar';
 import SidebarSash from '@/components/sidebar-sash/SidebarSash';
@@ -13,12 +15,14 @@ interface AppProps {}
 const App: React.FC<AppProps> = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const setSelectedProjectId = useSetSelectedProjectId();
+  const setSelectedSchemaId = useSetAtom(selectedSchemaIdAtom);
 
   useEffect(() => {
     if (projectId) {
       setSelectedProjectId(projectId);
+      setSelectedSchemaId(null); // Clear selected schema when changing projects
     }
-  }, [projectId, setSelectedProjectId]);
+  }, [projectId, setSelectedProjectId, setSelectedSchemaId]);
 
   if (!projectId) return null;
 

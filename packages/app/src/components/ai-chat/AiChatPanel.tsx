@@ -56,6 +56,160 @@ const parseMessageContent = (content: string): ParsedBlock[] => {
   return parts;
 };
 
+const renderMarkdown = (text: string) => {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let inList = false;
+  let listItems: React.ReactNode[] = [];
+
+  const parseInline = (line: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    const regex = /(\*\*.*?\*\*|`.*?`)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      const matchStr = match[0];
+      const matchIndex = match.index;
+
+      if (matchIndex > lastIndex) {
+        parts.push(line.substring(lastIndex, matchIndex));
+      }
+
+      if (matchStr.startsWith('**') && matchStr.endsWith('**')) {
+        parts.push(
+          <strong
+            key={matchIndex}
+            style={{ fontWeight: 'bold', color: 'inherit' }}
+          >
+            {matchStr.slice(2, -2)}
+          </strong>
+        );
+      } else if (matchStr.startsWith('`') && matchStr.endsWith('`')) {
+        parts.push(
+          <code
+            key={matchIndex}
+            style={{
+              backgroundColor: 'var(--gray-5)',
+              padding: '2px 4px',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+            }}
+          >
+            {matchStr.slice(1, -1)}
+          </code>
+        );
+      }
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : [line];
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList) {
+        inList = true;
+        listItems = [];
+      }
+      listItems.push(
+        <li
+          key={idx}
+          style={{
+            marginLeft: '16px',
+            marginBottom: '4px',
+            listStyleType: 'disc',
+          }}
+        >
+          {parseInline(trimmed.slice(2))}
+        </li>
+      );
+    } else {
+      if (inList) {
+        elements.push(
+          <ul
+            key={`list-${idx}`}
+            style={{ margin: '8px 0', paddingLeft: '16px' }}
+          >
+            {listItems}
+          </ul>
+        );
+        inList = false;
+      }
+
+      if (trimmed.startsWith('### ')) {
+        elements.push(
+          <h3
+            key={idx}
+            style={{
+              margin: '12px 0 6px 0',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              color: 'inherit',
+            }}
+          >
+            {parseInline(trimmed.slice(4))}
+          </h3>
+        );
+      } else if (trimmed.startsWith('## ')) {
+        elements.push(
+          <h2
+            key={idx}
+            style={{
+              margin: '14px 0 8px 0',
+              fontSize: '15px',
+              fontWeight: 'bold',
+              color: 'inherit',
+            }}
+          >
+            {parseInline(trimmed.slice(3))}
+          </h2>
+        );
+      } else if (trimmed.startsWith('# ')) {
+        elements.push(
+          <h1
+            key={idx}
+            style={{
+              margin: '16px 0 10px 0',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              color: 'inherit',
+            }}
+          >
+            {parseInline(trimmed.slice(2))}
+          </h1>
+        );
+      } else if (trimmed === '') {
+        elements.push(<div key={idx} style={{ height: '8px' }} />);
+      } else {
+        elements.push(
+          <p key={idx} style={{ margin: '4px 0', minHeight: '18px' }}>
+            {parseInline(line)}
+          </p>
+        );
+      }
+    }
+  });
+
+  if (inList) {
+    elements.push(
+      <ul key="list-end" style={{ margin: '8px 0', paddingLeft: '16px' }}>
+        {listItems}
+      </ul>
+    );
+  }
+
+  return elements;
+};
+
 export const AiChatPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
   const [activeEditor] = useAtom(activeEditorAtom);
@@ -234,7 +388,9 @@ export const AiChatPanel: React.FC = () => {
               <div css={styles.bubble(isUser)}>
                 {blocks.map((block, bIdx) => {
                   if (block.type === 'text') {
-                    return <span key={bIdx}>{block.value}</span>;
+                    return (
+                      <span key={bIdx}>{renderMarkdown(block.value)}</span>
+                    );
                   } else {
                     return (
                       <div key={bIdx} css={styles.sqlActionBlock}>

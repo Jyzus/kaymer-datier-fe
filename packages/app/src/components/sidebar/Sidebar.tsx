@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useUpdateCollaborativeSessionAll } from '@/atoms/modules/collaborative';
+import { useSelectedProjectId } from '@/atoms/modules/project';
 import {
   useAddSchemaEntity,
   useSchemaEntities,
@@ -23,6 +24,7 @@ const Sidebar: React.FC<SidebarProps> = () => {
   const updateSchemaEntities = useUpdateSchemaEntities();
   const updateCollaborativeSessionAll = useUpdateCollaborativeSessionAll();
   const addSchemaEntity = useAddSchemaEntity();
+  const projectId = useSelectedProjectId();
   const [isEditing, setIsEditing] = useState(false);
   const sashState = useAtomValue(sidebarSashAtom);
 
@@ -37,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = () => {
   useEffect(() => {
     updateSchemaEntities();
     updateCollaborativeSessionAll();
-  }, [updateSchemaEntities, updateCollaborativeSessionAll]);
+  }, [projectId, updateSchemaEntities, updateCollaborativeSessionAll]);
 
   return (
     <>

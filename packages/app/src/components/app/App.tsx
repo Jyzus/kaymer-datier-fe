@@ -1,5 +1,5 @@
 import { Flex } from '@radix-ui/themes';
-import { useAtom } from 'jotai';
+import { useSetAtom } from 'jotai';
 import React, { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
@@ -15,39 +15,16 @@ interface AppProps {}
 const App: React.FC<AppProps> = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const setSelectedProjectId = useSetSelectedProjectId();
-  const [selectedSchemaId, setSelectedSchemaId] = useAtom(selectedSchemaIdAtom);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const setSelectedSchemaId = useSetAtom(selectedSchemaIdAtom);
+  const [searchParams] = useSearchParams();
 
   const schemaIdFromUrl = searchParams.get('schemaId');
 
-  // Sync URL search params -> Jotai Atom
-  // Only trigger this when the URL actually changes
+  // URL is the single source of truth → sync into Jotai atom on every URL change.
+  // Writing to the URL happens in SidebarItem (onClick) to avoid two-way loops.
   useEffect(() => {
-    if (schemaIdFromUrl !== selectedSchemaId) {
-      setSelectedSchemaId(schemaIdFromUrl);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schemaIdFromUrl, setSelectedSchemaId]); // DELIBERATELY OMITTING selectedSchemaId to avoid reverting user clicks!
-
-  // Sync Jotai Atom -> URL search params
-  // Only trigger this when the Jotai state changes
-  useEffect(() => {
-    if (selectedSchemaId !== schemaIdFromUrl) {
-      setSearchParams(
-        prev => {
-          const next = new URLSearchParams(prev);
-          if (selectedSchemaId) {
-            next.set('schemaId', selectedSchemaId);
-          } else {
-            next.delete('schemaId');
-          }
-          return next;
-        },
-        { replace: true }
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSchemaId, setSearchParams]); // DELIBERATELY OMITTING schemaIdFromUrl to avoid looping!
+    setSelectedSchemaId(schemaIdFromUrl);
+  }, [schemaIdFromUrl, setSelectedSchemaId]);
 
   useEffect(() => {
     if (projectId) {

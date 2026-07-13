@@ -8,9 +8,10 @@ import {
   Text,
   TextField,
 } from '@radix-ui/themes';
-import { useAtom } from 'jotai';
+import { useAtomValue } from 'jotai';
 import { isEmpty } from 'lodash-es';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   useDeleteSchemaEntity,
@@ -32,8 +33,22 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ entity }) => {
   const [open, setOpen] = useState(false);
   const updateSchemaEntity = useUpdateSchemaEntity();
   const deleteSchemaEntity = useDeleteSchemaEntity();
-  const [schemaId, setSchemaId] = useAtom(selectedSchemaIdAtom);
+  // Read-only: only used to determine visual selection state
+  const schemaId = useAtomValue(selectedSchemaIdAtom);
+  const [, setSearchParams] = useSearchParams();
   const selected = schemaId === entity.id;
+
+  // Write to URL (App.tsx will sync URL → Jotai atom, no two-way loop)
+  const handleSelectSchema = () => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.set('schemaId', entity.id);
+        return next;
+      },
+      { replace: false }
+    );
+  };
 
   const handleStartEditing = () => {
     setName(entity.name);
@@ -82,7 +97,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ entity }) => {
       align="center"
       data-selected={selected && !isEditing}
       data-open-menu={open}
-      onClick={() => setSchemaId(entity.id)}
+      onClick={() => handleSelectSchema()}
     >
       {isEditing ? (
         <TextField.Root css={styles.text}>

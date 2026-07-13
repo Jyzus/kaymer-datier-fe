@@ -175,13 +175,29 @@ const sortTable: ReducerType<typeof ActionType.sortTable> = state => {
     .selectByIds(doc.tableIds);
   const TABLE_MARGIN = 80;
 
-  tables.sort((a, b) => a.columnIds.length - b.columnIds.length);
+  // Only auto-sort tables that have NOT been manually positioned yet
+  // (i.e. still at the default position of 0,0)
+  const unpositionedTables = tables.filter(t => t.ui.x === 0 && t.ui.y === 0);
+
+  if (unpositionedTables.length === 0) return;
+
+  // Find the current bounding box to place new tables below existing ones
+  const positionedTables = tables.filter(t => t.ui.x !== 0 || t.ui.y !== 0);
+  let startY = 50;
+  if (positionedTables.length > 0) {
+    const maxY = Math.max(
+      ...positionedTables.map(t => t.ui.y + calcTableHeight(t) + TABLE_MARGIN)
+    );
+    startY = maxY;
+  }
+
+  unpositionedTables.sort((a, b) => a.columnIds.length - b.columnIds.length);
 
   let widthSum = 50;
-  let currentHeight = 50;
+  let currentHeight = startY;
   let maxHeight = 50;
 
-  tables.forEach(table => {
+  unpositionedTables.forEach(table => {
     const width = calcTableWidths(table, state).width + TABLE_MARGIN;
     const height = calcTableHeight(table) + TABLE_MARGIN;
 

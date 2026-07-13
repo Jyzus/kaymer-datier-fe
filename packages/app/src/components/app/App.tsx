@@ -1,7 +1,7 @@
 import { Flex } from '@radix-ui/themes';
-import { useSetAtom } from 'jotai';
+import { useAtom } from 'jotai';
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 import { useSetSelectedProjectId } from '@/atoms/modules/project';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
@@ -15,14 +15,45 @@ interface AppProps {}
 const App: React.FC<AppProps> = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const setSelectedProjectId = useSetSelectedProjectId();
-  const setSelectedSchemaId = useSetAtom(selectedSchemaIdAtom);
+  const [selectedSchemaId, setSelectedSchemaId] = useAtom(selectedSchemaIdAtom);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const schemaIdFromUrl = searchParams.get('schemaId');
+
+  // Sync URL search params -> Jotai Atom
+  // Only trigger this when the URL actually changes
+  useEffect(() => {
+    if (schemaIdFromUrl !== selectedSchemaId) {
+      setSelectedSchemaId(schemaIdFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schemaIdFromUrl, setSelectedSchemaId]); // DELIBERATELY OMITTING selectedSchemaId to avoid reverting user clicks!
+
+  // Sync Jotai Atom -> URL search params
+  // Only trigger this when the Jotai state changes
+  useEffect(() => {
+    if (selectedSchemaId !== schemaIdFromUrl) {
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (selectedSchemaId) {
+            next.set('schemaId', selectedSchemaId);
+          } else {
+            next.delete('schemaId');
+          }
+          return next;
+        },
+        { replace: true }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSchemaId, setSearchParams]); // DELIBERATELY OMITTING schemaIdFromUrl to avoid looping!
 
   useEffect(() => {
     if (projectId) {
       setSelectedProjectId(projectId);
-      setSelectedSchemaId(null); // Clear selected schema when changing projects
     }
-  }, [projectId, setSelectedProjectId, setSelectedSchemaId]);
+  }, [projectId, setSelectedProjectId]);
 
   if (!projectId) return null;
 

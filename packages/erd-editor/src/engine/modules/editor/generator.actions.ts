@@ -293,7 +293,16 @@ export const changeColorAllAction$ = (color: string): GeneratorAction =>
   };
 
 export const loadSchemaSQLAction$ = (value: string): GeneratorAction =>
-  function* ({ settings }, ctx) {
+  function* ({ collections, settings }, ctx) {
+    // 1. Capture current table UI properties (positions, colors) by name
+    const currentTables = query(collections)
+      .collection('tableEntities')
+      .selectAll();
+    const tableUIMap = new Map<string, any>();
+    currentTables.forEach((t: any) => {
+      tableUIMap.set(t.name.toLowerCase(), { ...t.ui });
+    });
+
     yield loadJsonAction$(
       schemaSQLParserToSchemaJson(value, ctx, schema => {
         schema.settings = {
@@ -306,6 +315,21 @@ export const loadSchemaSQLAction$ = (value: string): GeneratorAction =>
             'zoomLevel',
           ]),
         };
+
+        // 2. Restore UI properties for tables that already existed
+        const newTables = Object.values(schema.collections.tableEntities);
+        newTables.forEach((table: any) => {
+          const oldUi = tableUIMap.get(table.name.toLowerCase());
+          if (oldUi) {
+            table.ui.x = oldUi.x;
+            table.ui.y = oldUi.y;
+            table.ui.zIndex = oldUi.zIndex;
+            if (oldUi.color) {
+              table.ui.color = oldUi.color;
+            }
+          }
+        });
+
         return schema;
       })
     );

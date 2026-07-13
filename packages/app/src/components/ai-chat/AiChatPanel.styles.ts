@@ -46,40 +46,28 @@ export const messageContainer = css`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-width: 85%;
+  width: 100%;
 `;
 
 export const userMessage = css`
-  align-self: flex-end;
   ${messageContainer}
 `;
 
 export const assistantMessage = css`
-  align-self: flex-start;
   ${messageContainer}
 `;
 
 export const bubble = (isUser: boolean) => css`
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.5;
+  padding: 14px 16px;
+  border-radius: var(--radius-3);
+  font-size: 13px;
+  line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-
-  ${isUser
-    ? `
-    background-color: var(--accent-9);
-    color: white;
-    border-bottom-right-radius: 2px;
-  `
-    : `
-    background-color: var(--gray-3);
-    color: var(--gray-12);
-    border-bottom-left-radius: 2px;
-    border: 1px solid var(--gray-4);
-  `}
+  border: 1px solid ${isUser ? 'var(--accent-5)' : 'var(--gray-5)'};
+  background-color: ${isUser ? 'var(--accent-2)' : 'var(--gray-3)'};
+  color: ${isUser ? 'var(--accent-11)' : 'var(--gray-12)'};
+  box-shadow: var(--shadow-1);
 `;
 
 export const sqlActionBlock = css`
@@ -114,12 +102,52 @@ export const inputArea = css`
   padding: 16px;
   border-top: 1px solid var(--gray-5);
   background-color: var(--gray-1);
-  display: flex;
-  gap: 8px;
 `;
 
-export const input = css`
-  flex-grow: 1;
+export const unifiedInputWrapper = css`
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--color-background);
+  border: 1px solid var(--gray-5);
+  border-radius: var(--radius-3);
+  padding: 10px 12px;
+  padding-bottom: 8px;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+
+  &:focus-within {
+    border-color: var(--accent-8);
+    box-shadow: 0 0 0 1px var(--accent-8);
+  }
+`;
+
+export const customTextArea = css`
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--gray-12);
+  min-height: 44px;
+  max-height: 120px;
+  padding: 0;
+  margin: 0;
+
+  &::placeholder {
+    color: var(--gray-8);
+  }
+`;
+
+export const inputControls = css`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
 `;
 
 export const toggleHandle = (isOpen: boolean) => css`

@@ -222,8 +222,11 @@ export const AiChatPanel: React.FC = () => {
             >
               <Text
                 size="1"
-                color="gray"
-                style={{ alignSelf: isUser ? 'flex-end' : 'flex-start' }}
+                weight="medium"
+                style={{
+                  color: isUser ? 'var(--accent-11)' : 'var(--gray-9)',
+                  marginBottom: '2px',
+                }}
               >
                 {isUser ? 'Tú' : 'Asistente IA'}
               </Text>
@@ -277,24 +280,28 @@ export const AiChatPanel: React.FC = () => {
 
       {/* Input */}
       <div css={styles.inputArea}>
-        <TextArea
-          required
-          css={styles.input}
-          placeholder="Pregunta o pide cambios en el DDL..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={2}
-          style={{ resize: 'none' }}
-        />
-        <IconButton
-          size="3"
-          variant="solid"
-          disabled={!input.trim() || loading}
-          onClick={handleSend}
-        >
-          <PaperPlaneIcon width="16" height="16" />
-        </IconButton>
+        <div css={styles.unifiedInputWrapper}>
+          <textarea
+            required
+            css={styles.customTextArea}
+            placeholder="Pregunta o pide cambios en el DDL..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={2}
+          />
+          <div css={styles.inputControls}>
+            <IconButton
+              size="2"
+              variant="solid"
+              disabled={!input.trim() || loading}
+              onClick={handleSend}
+              style={{ cursor: 'pointer' }}
+            >
+              <PaperPlaneIcon width="14" height="14" />
+            </IconButton>
+          </div>
+        </div>
       </div>
     </div>
   );

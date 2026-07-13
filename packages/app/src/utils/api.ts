@@ -102,10 +102,15 @@ export const api = {
     }),
 
   // AI Chat
-  sendChat: (messages: ChatMessage[], ddlContext?: string, schemaId?: string) =>
+  sendChat: (
+    messages: ChatMessage[],
+    ddlContext?: string,
+    schemaId?: string,
+    focusedTable?: string
+  ) =>
     request<{ reply: string }>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ messages, ddlContext, schemaId }),
+      body: JSON.stringify({ messages, ddlContext, schemaId, focusedTable }),
     }),
 
   getChatHistory: (schemaId: string, limit: number, offset: number) =>

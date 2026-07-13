@@ -6,6 +6,9 @@ export const aiChatOpenAtom = atom<boolean>(false);
 
 export const activeEditorAtom = atom<any | null>(null);
 
+// Momentary focus: set from ERD table context menu → auto-cleared after sending
+export const focusedTableAtom = atom<string | null>(null);
+
 export const activeChatMessagesAtom = atom<ChatMessage[]>([]);
 export const hasMoreChatMessagesAtom = atom<boolean>(true);
 export const loadingChatHistoryAtom = atom<boolean>(false);

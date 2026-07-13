@@ -5,7 +5,11 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useLayoutEffect, useRef } from 'react';
 
-import { activeEditorAtom } from '@/atoms/modules/ai-chat';
+import {
+  activeEditorAtom,
+  aiChatOpenAtom,
+  focusedTableAtom,
+} from '@/atoms/modules/ai-chat';
 import { nicknameStorageAtom } from '@/atoms/modules/collaborative';
 import { useReplicationSchemaEntity } from '@/atoms/modules/sidebar';
 import { themeAtom } from '@/atoms/modules/theme';
@@ -31,6 +35,8 @@ const Editor: React.FC<EditorProps> = props => {
   const nicknameRef = useRef(nickname);
   nicknameRef.current = nickname;
   const setActiveEditor = useSetAtom(activeEditorAtom);
+  const setFocusedTable = useSetAtom(focusedTableAtom);
+  const setAiChatOpen = useSetAtom(aiChatOpenAtom);
 
   useLayoutEffect(() => {
     const $viewer = viewerRef.current;
@@ -65,6 +71,16 @@ const Editor: React.FC<EditorProps> = props => {
         })
       );
 
+    // Listen for "Focus in AI chat" from ERD table context menu
+    const handleFocusTableForAI = (event: CustomEvent) => {
+      setFocusedTable(event.detail.tableName);
+      setAiChatOpen(true);
+    };
+    editor.addEventListener(
+      'focusTableForAI',
+      handleFocusTableForAI as EventListener
+    );
+
     const handleChangePresetTheme = (event: Event) => {
       const e = event as CustomEvent;
 
@@ -82,6 +98,10 @@ const Editor: React.FC<EditorProps> = props => {
       setActiveEditor(null);
       $viewer.removeChild(editor);
       editor.removeEventListener('changePresetTheme', handleChangePresetTheme);
+      editor.removeEventListener(
+        'focusTableForAI',
+        handleFocusTableForAI as EventListener
+      );
       Array.from(unsubscribeSet).forEach(unsubscribe => unsubscribe());
       unsubscribeSet.clear();
       editor.destroy();

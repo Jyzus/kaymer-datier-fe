@@ -145,6 +145,14 @@ export function useErdEditorAttachElement({ props, ctx, app, root }: Props) {
             })
           );
         },
+        focusTableForAI: ({ payload }) => {
+          ctx.dispatchEvent(
+            new CustomEvent('focusTableForAI', {
+              detail: { tableName: payload.tableName },
+              bubbles: true,
+            })
+          );
+        },
       })
     );
   });

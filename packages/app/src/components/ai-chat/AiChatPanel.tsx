@@ -14,7 +14,7 @@ import {
   Text,
   TextArea,
 } from '@radix-ui/themes';
-import { useAtom, useAtomValue } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
@@ -23,6 +23,7 @@ import {
   addChatMessagesAction,
   aiChatOpenAtom,
   clearChatHistoryAction,
+  focusedTableAtom,
   hasMoreChatMessagesAtom,
   loadingChatHistoryAtom,
   loadInitialChatHistoryAction,
@@ -262,10 +263,57 @@ const mergeDDL = (currentSql: string, newSql: string): string => {
   return mergedStatements.join(';\n\n') + ';';
 };
 
+/**
+ * Extracts only the CREATE TABLE blocks for a focused table and its directly
+ * related tables (FK references in or out). Falls back to full DDL on error.
+ */
+const filterDDLByTable = (fullDDL: string, tableName: string): string => {
+  try {
+    const lowerTarget = tableName.toLowerCase();
+    // Split into individual statements
+    const statements = fullDDL
+      .split(/;\s*\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    // Find the focused table statement
+    const focused = statements.find(s =>
+      s.toLowerCase().includes(`create table ${lowerTarget}`)
+    );
+    if (!focused) return fullDDL;
+
+    // Gather names of tables referenced by FK in the focused table
+    const referenced = new Set<string>();
+    const fkRegex = /references\s+(\w+)\s*\(/gi;
+    let m: RegExpExecArray | null;
+    while ((m = fkRegex.exec(focused)) !== null) {
+      referenced.add(m[1].toLowerCase());
+    }
+
+    // Also include tables that have FK pointing TO the focused table
+    const related = statements.filter(s => {
+      const lower = s.toLowerCase();
+      if (!lower.startsWith('create table')) return false;
+      const nameMatch = lower.match(/create table (\w+)/);
+      if (!nameMatch) return false;
+      const stmtName = nameMatch[1].toLowerCase();
+      if (stmtName === lowerTarget) return false; // already included
+      return (
+        referenced.has(stmtName) || lower.includes(`references ${lowerTarget}`)
+      );
+    });
+
+    return [focused, ...related].join(';\n\n') + ';';
+  } catch {
+    return fullDDL;
+  }
+};
+
 export const AiChatPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
   const [activeEditor] = useAtom(activeEditorAtom);
   const schemaId = useAtomValue(selectedSchemaIdAtom);
+  const [focusedTable, setFocusedTable] = useAtom(focusedTableAtom);
 
   const messages = useAtomValue(activeChatMessagesAtom);
   const hasMore = useAtomValue(hasMoreChatMessagesAtom);
@@ -301,7 +349,9 @@ export const AiChatPanel: React.FC = () => {
     if (!input.trim() || !schemaId || loading) return;
 
     const userMsgText = input.trim();
+    const currentFocus = focusedTable; // Capture before clearing
     setInput('');
+    setFocusedTable(null); // Clear focus immediately (momentary)
     setLoading(true);
 
     const userMessage: ChatMessage = { role: 'user', content: userMsgText };
@@ -311,18 +361,28 @@ export const AiChatPanel: React.FC = () => {
     addChatMessages([userMessage]);
 
     try {
-      // 1. Extract DDL of the active visual diagram
+      // 1. Extract DDL — filter to focused table + related tables if focus is set
       let ddlContext = '';
       if (activeEditor) {
         try {
-          ddlContext = activeEditor.getSchemaSQL();
+          const fullDDL = activeEditor.getSchemaSQL() as string;
+          if (currentFocus) {
+            ddlContext = filterDDLByTable(fullDDL, currentFocus);
+          } else {
+            ddlContext = fullDDL;
+          }
         } catch (err) {
           console.error('Error fetching schema SQL:', err);
         }
       }
 
-      // 2. Call backend chat API (passing schemaId to save it)
-      const res = await api.sendChat(updatedMessages, ddlContext, schemaId);
+      // 2. Call backend chat API
+      const res = await api.sendChat(
+        updatedMessages,
+        ddlContext,
+        schemaId,
+        currentFocus ?? undefined
+      );
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',

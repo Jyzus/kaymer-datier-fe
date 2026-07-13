@@ -25,6 +25,7 @@ const InternalActionType = {
   mouseTrackerStart: 'mouseTrackerStart',
   mouseTrackerEnd: 'mouseTrackerEnd',
   openDiffViewer: 'openDiffViewer',
+  focusTableForAI: 'focusTableForAI',
 } as const;
 type InternalActionType = ValuesType<typeof InternalActionType>;
 
@@ -58,6 +59,9 @@ type InternalActionMap = {
   [InternalActionType.mouseTrackerEnd]: void;
   [InternalActionType.openDiffViewer]: {
     value: string;
+  };
+  [InternalActionType.focusTableForAI]: {
+    tableName: string;
   };
 };
 
@@ -149,3 +153,7 @@ export const mouseTrackerEndAction = createAction<
 export const openDiffViewerAction = createAction<
   InternalActionMap[typeof InternalActionType.openDiffViewer]
 >(InternalActionType.openDiffViewer);
+
+export const focusTableForAIAction = createAction<
+  InternalActionMap[typeof InternalActionType.focusTableForAI]
+>(InternalActionType.focusTableForAI);

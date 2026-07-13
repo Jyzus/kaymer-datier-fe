@@ -14,6 +14,7 @@ import { changeColumnPrimaryKeyAction$ } from '@/engine/modules/table-column/gen
 import { useUnmounted } from '@/hooks/useUnmounted';
 import { ValuesType } from '@/internal-types';
 import {
+  focusTableForAIAction,
   openColorPickerAction,
   openTablePropertiesAction,
 } from '@/utils/emitter';
@@ -127,6 +128,20 @@ const ErdContextMenu: FC<ErdContextMenuProps> = (props, ctx) => {
     props.onClose();
   };
 
+  const handleFocusTableForAI = () => {
+    if (!props.tableId) return;
+
+    const { store, emitter } = app.value;
+    const { collections } = store.state;
+    const table = query(collections)
+      .collection('tableEntities')
+      .selectById(props.tableId);
+    if (!table) return;
+
+    emitter.emit(focusTableForAIAction({ tableName: table.name }));
+    props.onClose();
+  };
+
   onMounted(() => {
     const { shortcut$ } = app.value;
 
@@ -180,6 +195,19 @@ const ErdContextMenu: FC<ErdContextMenuProps> = (props, ctx) => {
                   <${ContextMenu.Menu}
                     icon=${html`<${Icon} name="palette" size=${14} />`}
                     name="Color"
+                  />
+                `}
+              />
+              <${ContextMenu.Item}
+                .onClick=${handleFocusTableForAI}
+                children=${html`
+                  <${ContextMenu.Menu}
+                    icon=${html`<${Icon}
+                      prefix="mdi"
+                      name="robot"
+                      size=${14}
+                    />`}
+                    name="Enfocar en chat IA"
                   />
                 `}
               />

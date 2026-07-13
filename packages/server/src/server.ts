@@ -293,7 +293,7 @@ app.delete('/api/schemas/:schemaId/chat', async (req, res) => {
 // POST /api/chat - Talk to AI assistant with DDL schema context
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, ddlContext, schemaId } = req.body;
+    const { messages, ddlContext, schemaId, focusedTable } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
     }
@@ -301,7 +301,8 @@ app.post('/api/chat', async (req, res) => {
     const aiClient = getAiClient();
 
     const systemPrompt = `You are an expert Database Architect AI. You help developers design, structure, improve, and explain their database schemas.
-${ddlContext ? `Here is the current database DDL schema:\n\`\`\`sql\n${ddlContext}\n\`\`\`` : 'Currently, the diagram has no tables defined.'}
+${focusedTable ? `\nIMPORTANT: The user has currently focused their attention on the table: '${focusedTable}'. Prioritize this table and its relationships in your analysis.\n` : ''}
+${ddlContext ? `Here is the current database DDL schema${focusedTable ? ' (filtered to the focused table and its relationships)' : ''}:\n\`\`\`sql\n${ddlContext}\n\`\`\`` : 'Currently, the diagram has no tables defined.'}
 
 Instructions:
 1. Explain structural details in a clear and pedagogical way if the user asks for explanations.

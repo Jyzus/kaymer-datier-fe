@@ -5,7 +5,7 @@ import { useParams } from 'react-router-dom';
 
 import { useSetSelectedProjectId } from '@/atoms/modules/project';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
-import { AiChatPanel, AiChatToggle } from '@/components/ai-chat/AiChatPanel';
+import { AiChatPanel } from '@/components/ai-chat/AiChatPanel';
 import Sidebar from '@/components/sidebar/Sidebar';
 import SidebarSash from '@/components/sidebar-sash/SidebarSash';
 import Viewer from '@/components/viewer/Viewer';
@@ -49,7 +49,6 @@ const App: React.FC<AppProps> = () => {
           <Viewer />
         </div>
         <AiChatPanel />
-        <AiChatToggle />
       </Flex>
       <SidebarSash />
     </>

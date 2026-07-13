@@ -5,7 +5,7 @@ const slideIn = keyframes`
   to { transform: translateX(0); }
 `;
 
-export const panel = css`
+export const panel = (isOpen: boolean) => css`
   width: 380px;
   min-width: 380px;
   height: 100%;
@@ -14,9 +14,14 @@ export const panel = css`
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  animation: ${slideIn} 0.25s ease-out;
   position: relative;
   z-index: 10;
+  transition: margin-right 0.25s ease-out;
+
+  ${!isOpen &&
+  `
+    margin-right: -380px;
+  `}
 `;
 
 export const header = css`
@@ -117,18 +122,34 @@ export const input = css`
   flex-grow: 1;
 `;
 
-export const toggleFloatingButton = css`
+export const toggleHandle = (isOpen: boolean) => css`
   position: absolute;
-  bottom: 24px;
-  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  left: -20px;
+  width: 20px;
+  height: 64px;
+  background-color: var(--gray-3);
+  border: 1px solid var(--gray-6);
+  border-right: none;
+  border-radius: var(--radius-3) 0 0 var(--radius-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+  transition:
+    background-color 0.2s,
+    width 0.2s,
+    left 0.2s;
+  color: var(--gray-11);
 
   &:hover {
-    transform: scale(1.05);
+    background-color: var(--accent-3);
+    color: var(--accent-11);
+    width: 24px;
+    left: -24px;
   }
 `;
 

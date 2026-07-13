@@ -1,6 +1,7 @@
 import {
-  ChatBubbleIcon,
   CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   Cross1Icon,
   MagicWandIcon,
   PaperPlaneIcon,
@@ -74,7 +75,8 @@ export const AiChatPanel: React.FC = () => {
     }
   }, [messages, isOpen, loading]);
 
-  if (!isOpen) return null;
+  // Only render panel if a schema is selected
+  if (!schemaId) return null;
 
   const handleSend = async () => {
     if (!input.trim() || !schemaId || loading) return;
@@ -153,7 +155,20 @@ export const AiChatPanel: React.FC = () => {
   };
 
   return (
-    <div css={styles.panel}>
+    <div css={styles.panel(isOpen)}>
+      {/* Vertical Toggle Handle */}
+      <div
+        css={styles.toggleHandle(isOpen)}
+        onClick={() => setIsOpen(!isOpen)}
+        title={isOpen ? 'Cerrar Asistente de IA' : 'Abrir Asistente de IA'}
+      >
+        {isOpen ? (
+          <ChevronRightIcon width="16" height="16" />
+        ) : (
+          <ChevronLeftIcon width="16" height="16" />
+        )}
+      </div>
+
       {/* Header */}
       <div css={styles.header}>
         <Flex align="center" gap="2">
@@ -286,22 +301,5 @@ export const AiChatPanel: React.FC = () => {
 };
 
 export const AiChatToggle: React.FC = () => {
-  const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
-  const schemaId = useAtomValue(selectedSchemaIdAtom);
-
-  // Toggle button only makes sense when a schema is active/selected
-  if (!schemaId) return null;
-
-  return (
-    <IconButton
-      size="4"
-      variant="solid"
-      color="grass"
-      css={styles.toggleFloatingButton}
-      onClick={() => setIsOpen(!isOpen)}
-      title="Consultar Asistente de IA"
-    >
-      <ChatBubbleIcon width="20" height="20" />
-    </IconButton>
-  );
+  return null;
 };

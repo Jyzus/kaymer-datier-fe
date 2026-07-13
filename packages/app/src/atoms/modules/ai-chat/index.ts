@@ -1,4 +1,5 @@
 import { atom, useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 
 import { ChatMessage } from '@/utils/api';
 
@@ -7,7 +8,10 @@ export const aiChatOpenAtom = atom<boolean>(false);
 export const activeEditorAtom = atom<any | null>(null);
 
 // Stores chat history by schemaId: Record<schemaId, ChatMessage[]>
-const chatHistoryMapAtom = atom<Record<string, ChatMessage[]>>({});
+const chatHistoryMapAtom = atomWithStorage<Record<string, ChatMessage[]>>(
+  'datier-ai-chat-history',
+  {}
+);
 
 export const schemaChatHistoryAtom = atom(
   get => get(chatHistoryMapAtom),

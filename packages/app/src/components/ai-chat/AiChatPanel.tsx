@@ -210,6 +210,52 @@ const renderMarkdown = (text: string) => {
   return elements;
 };
 
+const mergeDDL = (currentSql: string, newSql: string): string => {
+  const splitStatements = (sql: string): string[] => {
+    return sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+  };
+
+  const getCreateTableName = (statement: string): string | null => {
+    const match = statement.match(
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)/i
+    );
+    if (!match) return null;
+    return match[1]
+      .replace(/["'`\[\]]/g, '')
+      .trim()
+      .toLowerCase();
+  };
+
+  const currentStatements = splitStatements(currentSql);
+  const newStatements = splitStatements(newSql);
+
+  const mergedStatements = [...currentStatements];
+
+  for (const newStmt of newStatements) {
+    const newTableName = getCreateTableName(newStmt);
+
+    if (newTableName) {
+      const existingIdx = mergedStatements.findIndex(stmt => {
+        const name = getCreateTableName(stmt);
+        return name === newTableName;
+      });
+
+      if (existingIdx !== -1) {
+        mergedStatements[existingIdx] = newStmt;
+      } else {
+        mergedStatements.push(newStmt);
+      }
+    } else {
+      mergedStatements.push(newStmt);
+    }
+  }
+
+  return mergedStatements.join(';\n\n') + ';';
+};
+
 export const AiChatPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
   const [activeEditor] = useAtom(activeEditorAtom);
@@ -295,7 +341,9 @@ export const AiChatPanel: React.FC = () => {
       return;
     }
     try {
-      activeEditor.setSchemaSQL(sql);
+      const currentSql = activeEditor.getSchemaSQL();
+      const mergedSql = mergeDDL(currentSql, sql);
+      activeEditor.setSchemaSQL(mergedSql);
     } catch (err: any) {
       alert(`Error al aplicar SQL en el diagrama: ${err.message}`);
     }

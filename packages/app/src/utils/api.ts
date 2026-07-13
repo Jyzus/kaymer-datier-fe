@@ -102,9 +102,19 @@ export const api = {
     }),
 
   // AI Chat
-  sendChat: (messages: ChatMessage[], ddlContext?: string) =>
+  sendChat: (messages: ChatMessage[], ddlContext?: string, schemaId?: string) =>
     request<{ reply: string }>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ messages, ddlContext }),
+      body: JSON.stringify({ messages, ddlContext, schemaId }),
+    }),
+
+  getChatHistory: (schemaId: string, limit: number, offset: number) =>
+    request<ChatMessage[]>(
+      `/schemas/${schemaId}/chat?limit=${limit}&offset=${offset}`
+    ),
+
+  clearChatHistory: (schemaId: string) =>
+    request<{ success: boolean }>(`/schemas/${schemaId}/chat`, {
+      method: 'DELETE',
     }),
 };

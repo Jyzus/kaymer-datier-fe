@@ -18,3 +18,22 @@ export const schemas = pgTable('schemas', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 });
+
+export const chats = pgTable('chats', {
+  id: text('id').primaryKey(),
+  schemaId: text('schema_id')
+    .notNull()
+    .references(() => schemas.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
+export const chatMessages = pgTable('chat_messages', {
+  id: text('id').primaryKey(),
+  chatId: text('chat_id')
+    .notNull()
+    .references(() => chats.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'user' | 'assistant'
+  message: text('message').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});

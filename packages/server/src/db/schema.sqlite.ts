@@ -18,3 +18,22 @@ export const schemas = sqliteTable('schemas', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
+
+export const chats = sqliteTable('chats', {
+  id: text('id').primaryKey(),
+  schemaId: text('schema_id')
+    .notNull()
+    .references(() => schemas.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const chatMessages = sqliteTable('chat_messages', {
+  id: text('id').primaryKey(),
+  chatId: text('chat_id')
+    .notNull()
+    .references(() => chats.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // 'user' | 'assistant'
+  message: text('message').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});

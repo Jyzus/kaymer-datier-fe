@@ -213,10 +213,87 @@ app.delete('/api/schemas/:id', async (req, res) => {
   }
 });
 
+// GET /api/schemas/:schemaId/chat - Fetch paginated chat messages for a schema
+app.get('/api/schemas/:schemaId/chat', async (req, res) => {
+  try {
+    const { schemaId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    // Find or create chat
+    const activeChat = await db
+      .select()
+      .from(schema.chats)
+      .where(eq(schema.chats.schemaId, schemaId))
+      .limit(1);
+
+    let chatId: string;
+    if (activeChat.length === 0) {
+      chatId = crypto.randomUUID();
+      const now = new Date();
+      await db.insert(schema.chats).values({
+        id: chatId,
+        schemaId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return res.json([]); // New chat has no messages
+    } else {
+      chatId = activeChat[0].id;
+    }
+
+    // Query messages order by createdAt desc (for pagination)
+    const messagesList = await db
+      .select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.chatId, chatId))
+      .orderBy(desc(schema.chatMessages.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Map database table fields to ChatMessage interface
+    const formatted = messagesList.map((m: any) => ({
+      role: m.role,
+      content: m.message,
+    }));
+
+    res.json(formatted);
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/schemas/:schemaId/chat - Clear chat messages for a schema
+app.delete('/api/schemas/:schemaId/chat', async (req, res) => {
+  try {
+    const { schemaId } = req.params;
+    const activeChat = await db
+      .select()
+      .from(schema.chats)
+      .where(eq(schema.chats.schemaId, schemaId))
+      .limit(1);
+
+    if (activeChat.length > 0) {
+      await db
+        .delete(schema.chatMessages)
+        .where(eq(schema.chatMessages.chatId, activeChat[0].id));
+      await db
+        .delete(schema.chats)
+        .where(eq(schema.chats.id, activeChat[0].id));
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error clearing chat history:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/chat - Talk to AI assistant with DDL schema context
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, ddlContext } = req.body;
+    const { messages, ddlContext, schemaId } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
     }
@@ -246,6 +323,60 @@ Instructions:
     ];
 
     const reply = await aiClient.generateChatResponse(fullMessages as any);
+
+    // Persist messages if schemaId is provided
+    if (schemaId && messages.length > 0) {
+      try {
+        const activeChat = await db
+          .select()
+          .from(schema.chats)
+          .where(eq(schema.chats.schemaId, schemaId))
+          .limit(1);
+
+        let chatId: string;
+        const now = new Date();
+
+        if (activeChat.length === 0) {
+          chatId = crypto.randomUUID();
+          await db.insert(schema.chats).values({
+            id: chatId,
+            schemaId,
+            createdAt: now,
+            updatedAt: now,
+          });
+        } else {
+          chatId = activeChat[0].id;
+          await db
+            .update(schema.chats)
+            .set({ updatedAt: now })
+            .where(eq(schema.chats.id, chatId));
+        }
+
+        // Save latest user message
+        const lastUserMessage = messages[messages.length - 1];
+        if (lastUserMessage && lastUserMessage.role === 'user') {
+          await db.insert(schema.chatMessages).values({
+            id: crypto.randomUUID(),
+            chatId,
+            role: 'user',
+            message: lastUserMessage.content,
+            createdAt: new Date(now.getTime() - 1000),
+          });
+        }
+
+        // Save AI reply
+        await db.insert(schema.chatMessages).values({
+          id: crypto.randomUUID(),
+          chatId,
+          role: 'assistant',
+          message: reply,
+          createdAt: now,
+        });
+      } catch (dbErr) {
+        console.error('Failed to persist chat messages:', dbErr);
+      }
+    }
+
     res.json({ reply });
   } catch (error: any) {
     console.error('AI chat error:', error);

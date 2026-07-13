@@ -18,9 +18,15 @@ import { useAtom, useAtomValue } from 'jotai';
 import React, { useEffect, useRef, useState } from 'react';
 
 import {
+  activeChatMessagesAtom,
   activeEditorAtom,
+  addChatMessagesAction,
   aiChatOpenAtom,
-  schemaChatHistoryAtom,
+  clearChatHistoryAction,
+  hasMoreChatMessagesAtom,
+  loadingChatHistoryAtom,
+  loadInitialChatHistoryAction,
+  loadMoreChatHistoryAction,
 } from '@/atoms/modules/ai-chat';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 import { api, ChatMessage } from '@/utils/api';
@@ -260,20 +266,33 @@ export const AiChatPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
   const [activeEditor] = useAtom(activeEditorAtom);
   const schemaId = useAtomValue(selectedSchemaIdAtom);
-  const [chatHistoryMap, setChatHistoryMap] = useAtom(schemaChatHistoryAtom);
+
+  const messages = useAtomValue(activeChatMessagesAtom);
+  const hasMore = useAtomValue(hasMoreChatMessagesAtom);
+  const loadingHistory = useAtomValue(loadingChatHistoryAtom);
+
+  const [, loadInitialChatHistory] = useAtom(loadInitialChatHistoryAction);
+  const [, loadMoreChatHistory] = useAtom(loadMoreChatHistoryAction);
+  const [, addChatMessages] = useAtom(addChatMessagesAction);
+  const [, clearChatHistory] = useAtom(clearChatHistoryAction);
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const messages = schemaId ? chatHistoryMap[schemaId] || [] : [];
-
-  // Scroll to bottom when messages list updates or panel opens
+  // Trigger initial chat loading when active schema changes
   useEffect(() => {
-    if (scrollRef.current) {
+    if (schemaId) {
+      loadInitialChatHistory(schemaId);
+    }
+  }, [schemaId, loadInitialChatHistory]);
+
+  // Scroll to bottom when new messages arrive (non-historical ones)
+  useEffect(() => {
+    if (scrollRef.current && !loadingHistory) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isOpen, loading]);
+  }, [messages, isOpen, loading, loadingHistory]);
 
   // Only render panel if a schema is selected
   if (!schemaId) return null;
@@ -289,10 +308,7 @@ export const AiChatPanel: React.FC = () => {
     const updatedMessages = [...messages, userMessage];
 
     // Optimistically update conversation history
-    setChatHistoryMap({
-      schemaId,
-      messages: updatedMessages,
-    });
+    addChatMessages([userMessage]);
 
     try {
       // 1. Extract DDL of the active visual diagram
@@ -305,31 +321,24 @@ export const AiChatPanel: React.FC = () => {
         }
       }
 
-      // 2. Call backend chat API
-      const res = await api.sendChat(updatedMessages, ddlContext);
+      // 2. Call backend chat API (passing schemaId to save it)
+      const res = await api.sendChat(updatedMessages, ddlContext, schemaId);
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',
         content: res.reply,
       };
 
-      // 3. Save final conversation history
-      setChatHistoryMap({
-        schemaId,
-        messages: [...updatedMessages, assistantMessage],
-      });
+      // 3. Save final conversation history locally
+      addChatMessages([assistantMessage]);
     } catch (err: any) {
       console.error(err);
-      setChatHistoryMap({
-        schemaId,
-        messages: [
-          ...updatedMessages,
-          {
-            role: 'assistant',
-            content: `❌ Error al conectar con la IA: ${err.message}`,
-          },
-        ],
-      });
+      addChatMessages([
+        {
+          role: 'assistant',
+          content: `❌ Error al conectar con la IA: ${err.message}`,
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -381,19 +390,50 @@ export const AiChatPanel: React.FC = () => {
           />
           <Heading size="3">Asistente de IA (DB)</Heading>
         </Flex>
-        <IconButton
-          size="1"
-          variant="ghost"
-          color="gray"
-          onClick={() => setIsOpen(false)}
-        >
-          <Cross1Icon width="14" height="14" />
-        </IconButton>
+        <Flex align="center" gap="2">
+          {messages.length > 0 && (
+            <Button
+              size="1"
+              variant="ghost"
+              color="red"
+              onClick={() => {
+                if (confirm('¿Estás seguro de que deseas vaciar el chat?')) {
+                  clearChatHistory(schemaId);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              Vaciar
+            </Button>
+          )}
+          <IconButton
+            size="1"
+            variant="ghost"
+            color="gray"
+            onClick={() => setIsOpen(false)}
+          >
+            <Cross1Icon width="14" height="14" />
+          </IconButton>
+        </Flex>
       </div>
 
       {/* Messages */}
       <div css={styles.scrollArea} ref={scrollRef}>
-        {messages.length === 0 && (
+        {hasMore && (
+          <Flex justify="center" style={{ margin: '8px 0 16px 0' }}>
+            <Button
+              size="1"
+              variant="ghost"
+              disabled={loadingHistory}
+              onClick={() => loadMoreChatHistory(schemaId)}
+              style={{ cursor: 'pointer' }}
+            >
+              {loadingHistory ? 'Cargando...' : 'Cargar mensajes anteriores'}
+            </Button>
+          </Flex>
+        )}
+
+        {messages.length === 0 && !loadingHistory && (
           <Flex
             direction="column"
             align="center"

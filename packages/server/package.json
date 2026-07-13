@@ -18,7 +18,9 @@
     "postgres": "^3.4.4",
     "@libsql/client": "^0.6.2",
     "openai": "^4.52.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@dineug/erd-editor-schema": "workspace:*",
+    "@dineug/schema-sql-parser": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

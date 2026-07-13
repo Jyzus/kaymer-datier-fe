@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { getAiClient } from './services/ai.js';
+import { schemaSQLParserToSchemaJson } from './utils/schemaSqlParser.js';
 
 dotenv.config();
 
@@ -198,6 +199,41 @@ app.put('/api/schemas/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating schema:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/schemas/:id/sql - Parse SQL DDL and save as JSON schema
+app.put('/api/schemas/:id/sql', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sql } = req.body;
+    if (!sql) {
+      return res.status(400).json({ error: 'SQL content is required' });
+    }
+
+    const jsonValue = schemaSQLParserToSchemaJson(sql);
+
+    await db
+      .update(schema.schemas)
+      .set({ value: jsonValue, updatedAt: new Date() })
+      .where(eq(schema.schemas.id, id));
+
+    // Also update parent project's updatedAt time
+    const schemaDetails = await db
+      .select({ projectId: schema.schemas.projectId })
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, id));
+    if (schemaDetails.length > 0) {
+      await db
+        .update(schema.projects)
+        .set({ updatedAt: new Date() })
+        .where(eq(schema.projects.id, schemaDetails[0].projectId));
+    }
+
+    res.json({ success: true, value: jsonValue });
+  } catch (error: any) {
+    console.error('Error parsing/updating schema SQL:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 

@@ -10,7 +10,10 @@ import { fileURLToPath } from 'url';
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { getAiClient } from './services/ai.js';
-import { schemaSQLParserToSchemaJson } from './utils/schemaSqlParser.js';
+import {
+  mergeSchemaJson,
+  schemaSQLParserToSchemaJson,
+} from './utils/schemaSqlParser.js';
 
 dotenv.config();
 
@@ -211,11 +214,25 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
       return res.status(400).json({ error: 'SQL content is required' });
     }
 
-    const jsonValue = schemaSQLParserToSchemaJson(sql);
+    const newJsonValue = schemaSQLParserToSchemaJson(sql);
+
+    // Fetch current schema to merge if it exists
+    const currentSchemaData = await db
+      .select()
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, id));
+
+    let finalJsonValue = newJsonValue;
+    if (currentSchemaData.length > 0 && currentSchemaData[0].value) {
+      finalJsonValue = mergeSchemaJson(
+        currentSchemaData[0].value,
+        newJsonValue
+      );
+    }
 
     await db
       .update(schema.schemas)
-      .set({ value: jsonValue, updatedAt: new Date() })
+      .set({ value: finalJsonValue, updatedAt: new Date() })
       .where(eq(schema.schemas.id, id));
 
     // Also update parent project's updatedAt time
@@ -230,7 +247,7 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
         .where(eq(schema.projects.id, schemaDetails[0].projectId));
     }
 
-    res.json({ success: true, value: jsonValue });
+    res.json({ success: true, value: finalJsonValue });
   } catch (error: any) {
     console.error('Error parsing/updating schema SQL:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });

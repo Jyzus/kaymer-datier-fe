@@ -1,3 +1,5 @@
+import type { SchemaContext } from './schemaContext';
+
 export interface Project {
   id: string;
   name: string;
@@ -6,11 +8,28 @@ export interface Project {
   updatedAt: string;
 }
 
+/**
+ * Target database engines a schema can be modeled for. Names mirror
+ * erd-editor's DatabaseVendor (packages/erd-editor/src/constants/sql/database.ts)
+ * and the server's DatabaseVendorToBitmask.
+ */
+export const DATABASE_VENDORS = [
+  'PostgreSQL',
+  'MySQL',
+  'MariaDB',
+  'MSSQL',
+  'Oracle',
+  'SQLite',
+] as const;
+export type DatabaseVendor = (typeof DATABASE_VENDORS)[number];
+
 export interface Schema {
   id: string;
   projectId: string;
   name: string;
   value: string;
+  // Vendor name; null for schemas created before the engine field existed.
+  database: DatabaseVendor | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -18,6 +37,10 @@ export interface Schema {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** Table focused when the message was exchanged, if any. */
+  focusedTable?: string;
+  /** Tables whose full definition was sent as context for this exchange. */
+  contextTables?: string[];
 }
 
 const getApiBase = () => {
@@ -82,10 +105,15 @@ export const api = {
   getSchemas: (projectId: string) =>
     request<Omit<Schema, 'value'>[]>(`/projects/${projectId}/schemas`),
 
-  createSchema: (projectId: string, name: string) =>
+  createSchema: (
+    projectId: string,
+    name: string,
+    database: DatabaseVendor,
+    value?: string
+  ) =>
     request<Schema>(`/projects/${projectId}/schemas`, {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, database, value }),
     }),
 
   getSchema: (id: string) => request<Schema>(`/schemas/${id}`),
@@ -104,13 +132,12 @@ export const api = {
   // AI Chat
   sendChat: (
     messages: ChatMessage[],
-    ddlContext?: string,
-    schemaId?: string,
-    focusedTable?: string
+    schemaContext: SchemaContext | null,
+    schemaId?: string
   ) =>
     request<{ reply: string }>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ messages, ddlContext, schemaId, focusedTable }),
+      body: JSON.stringify({ messages, schemaContext, schemaId }),
     }),
 
   getChatHistory: (schemaId: string, limit: number, offset: number) =>

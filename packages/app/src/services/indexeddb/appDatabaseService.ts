@@ -1,8 +1,9 @@
-import Dexie, { Table } from 'dexie';
+import { Dexie, Table } from 'dexie';
 
 import { CollaborativeService } from '@/services/indexeddb/modules/collaborative/service';
 import { SchemaEntity } from '@/services/indexeddb/modules/schema';
 import { SchemaService } from '@/services/indexeddb/modules/schema/service';
+import { DatabaseVendor } from '@/utils/api';
 
 export class AppDatabase extends Dexie {
   schemas!: Table<SchemaEntity, string>;
@@ -23,7 +24,10 @@ export class AppDatabaseService {
 
   async addSchemaEntity(
     projectId: string,
-    entityValue: Pick<SchemaEntity, 'name'>
+    entityValue: Pick<SchemaEntity, 'name'> & {
+      database: DatabaseVendor;
+      value?: string;
+    }
   ) {
     return await this.#schemaService.add(projectId, entityValue);
   }

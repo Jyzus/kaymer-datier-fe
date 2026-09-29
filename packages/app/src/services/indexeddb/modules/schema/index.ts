@@ -1,12 +1,13 @@
 import { debounce } from 'lodash-es';
 
-import { api } from '@/utils/api';
+import { api, DatabaseVendor } from '@/utils/api';
 
 export type SchemaEntity = {
   id: string;
   projectId: string;
   name: string;
   value: string;
+  database: DatabaseVendor | null;
   createAt: number;
   updateAt: number;
 };
@@ -14,14 +15,23 @@ export type SchemaEntity = {
 export async function addSchemaEntity(
   db: any,
   projectId: string,
-  entityValue: Pick<SchemaEntity, 'name'>
+  entityValue: Pick<SchemaEntity, 'name'> & {
+    database: DatabaseVendor;
+    value?: string;
+  }
 ): Promise<SchemaEntity> {
-  const result = await api.createSchema(projectId, entityValue.name);
+  const result = await api.createSchema(
+    projectId,
+    entityValue.name,
+    entityValue.database,
+    entityValue.value
+  );
   return {
     id: result.id,
     projectId: result.projectId,
     name: result.name,
     value: result.value,
+    database: result.database,
     createAt: new Date(result.createdAt).getTime(),
     updateAt: new Date(result.updatedAt).getTime(),
   };
@@ -69,6 +79,7 @@ export async function getSchemaEntity(
     projectId: result.projectId,
     name: result.name,
     value: result.value,
+    database: result.database,
     createAt: new Date(result.createdAt).getTime(),
     updateAt: new Date(result.updatedAt).getTime(),
   };
@@ -83,6 +94,7 @@ export async function getSchemaEntities(
     id: item.id,
     projectId: item.projectId,
     name: item.name,
+    database: item.database,
     createAt: new Date(item.createdAt).getTime(),
     updateAt: new Date(item.updatedAt).getTime(),
   }));

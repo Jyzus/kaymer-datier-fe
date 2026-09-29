@@ -21,7 +21,6 @@ import {
 import { importDiffJSON } from '@/utils/file/importFile';
 import { KeyBindingName } from '@/utils/keyboard-shortcut';
 
-import { createDatabaseMenus } from './menus/databaseMenus';
 import { createDrawRelationshipMenus } from './menus/drawRelationshipMenus';
 import { createExportMenus } from './menus/exportMenus';
 import { createImportMenus } from './menus/importMenus';
@@ -204,7 +203,7 @@ const ErdContextMenu: FC<ErdContextMenuProps> = (props, ctx) => {
                   <${ContextMenu.Menu}
                     icon=${html`<${Icon}
                       prefix="mdi"
-                      name="robot"
+                      name="target"
                       size=${14}
                     />`}
                     name="Enfocar en chat IA"
@@ -331,32 +330,6 @@ const ErdContextMenu: FC<ErdContextMenuProps> = (props, ctx) => {
                     />
                   `}
                   subChildren=${html`${createShowMenus(app.value).map(
-                    menu => html`
-                      <${ContextMenu.Item}
-                        .onClick=${menu.onClick}
-                        children=${html`
-                          <${ContextMenu.Menu}
-                            icon=${menu.checked
-                              ? html`<${Icon} name="check" size=${14} />`
-                              : null}
-                            name=${menu.name}
-                          />
-                        `}
-                      />
-                    `
-                  )}`}
-                />
-                <${ContextMenu.Item}
-                  children=${html`
-                    <${ContextMenu.Menu}
-                      icon=${html`
-                        <${Icon} prefix="mdi" name="database" size=${14} />
-                      `}
-                      name="Database"
-                      right=${chevronRightIcon}
-                    />
-                  `}
-                  subChildren=${html`${createDatabaseMenus(app.value).map(
                     menu => html`
                       <${ContextMenu.Item}
                         .onClick=${menu.onClick}

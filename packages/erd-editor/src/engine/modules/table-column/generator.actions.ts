@@ -12,7 +12,9 @@ import { FocusType, SelectType } from '@/engine/modules/editor/state';
 import { getRemoveFirstColumnId } from '@/engine/modules/editor/utils/focus';
 import { removeIndexAction } from '@/engine/modules/index/atom.actions';
 import { removeRelationshipAction } from '@/engine/modules/relationship/atom.actions';
+import { changeDatabaseAction } from '@/engine/modules/settings/atom.actions';
 import { bHas } from '@/utils/bit';
+import { previewColumnTypeConversion } from '@/utils/dataType/convertDataType';
 
 import { ChangeColumnValuePayload } from './actions';
 import {
@@ -201,6 +203,34 @@ export const changeColumnDataTypeAction$ = (
     }
 
     yield payloads.map(changeColumnDataTypeAction);
+  };
+
+/**
+ * Switches the target database engine and rewrites every column's data type to
+ * the equivalent type in the new engine (primitiveType-based conversion).
+ * Unknown/custom types are left untouched. Undoable as a single history entry.
+ */
+export const convertAllColumnDataTypesAction$ = (
+  targetDatabase: number
+): GeneratorAction =>
+  function* (state) {
+    const sourceDatabase = state.settings.database;
+    if (sourceDatabase === targetDatabase) return;
+
+    const changeActions = previewColumnTypeConversion(state, targetDatabase)
+      .filter(preview => preview.changed && !preview.unmapped)
+      .map(preview =>
+        changeColumnDataTypeAction({
+          tableId: preview.tableId,
+          id: preview.columnId,
+          value: preview.to,
+        })
+      );
+
+    if (changeActions.length) {
+      yield changeActions;
+    }
+    yield changeDatabaseAction({ value: targetDatabase });
   };
 
 export const changeColumnValueAction$ = (

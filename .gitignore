@@ -32,5 +32,7 @@ yarn-error.log*
 *.sln
 *.sw?
 .env
+*.db
+*.db-journal
 
 .nx

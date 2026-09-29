@@ -7,10 +7,22 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import {
+  BitmaskToDatabaseVendor,
+  DatabaseVendorList,
+  DatabaseVendorToBitmask,
+  isDatabaseVendor,
+} from './constants/database.js';
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { getAiClient } from './services/ai.js';
 import {
+  buildConversation,
+  buildSystemPrompt,
+  type SchemaContext,
+} from './services/schemaPrompt.js';
+import {
+  createInitialSchemaValue,
   mergeSchemaJson,
   schemaSQLParserToSchemaJson,
 } from './utils/schemaSqlParser.js';
@@ -115,6 +127,7 @@ app.get('/api/projects/:projectId/schemas', async (req, res) => {
         id: schema.schemas.id,
         projectId: schema.schemas.projectId,
         name: schema.schemas.name,
+        database: schema.schemas.database,
         createdAt: schema.schemas.createdAt,
         updatedAt: schema.schemas.updatedAt,
       })
@@ -132,17 +145,43 @@ app.get('/api/projects/:projectId/schemas', async (req, res) => {
 app.post('/api/projects/:projectId/schemas', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { name } = req.body;
+    const { name, database, value } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
+    if (!isDatabaseVendor(database)) {
+      return res.status(400).json({
+        error: `Database engine is required and must be one of: ${DatabaseVendorList.join(
+          ', '
+        )}`,
+      });
+    }
+
+    // An optional pre-built diagram JSON (e.g. a schema duplicated into another
+    // engine). When absent, start from a valid empty editor state whose
+    // settings.database matches the chosen engine (never the silent MySQL default).
+    let initialValue: string;
+    if (typeof value === 'string' && value.trim()) {
+      try {
+        JSON.parse(value);
+        initialValue = value;
+      } catch {
+        return res.status(400).json({ error: 'value must be valid JSON' });
+      }
+    } else {
+      initialValue = createInitialSchemaValue(
+        DatabaseVendorToBitmask[database]
+      );
+    }
+
     const id = crypto.randomUUID();
     const now = new Date();
     const newSchema = {
       id,
       projectId,
       name,
-      value: '', // start with an empty editor state
+      value: initialValue,
+      database,
       createdAt: now,
       updatedAt: now,
     };
@@ -176,10 +215,24 @@ app.get('/api/schemas/:id', async (req, res) => {
 app.put('/api/schemas/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, value } = req.body;
+    const { name, value, database } = req.body;
     const updateValues: any = { updatedAt: new Date() };
     if (name !== undefined) updateValues.name = name;
-    if (value !== undefined) updateValues.value = value;
+    if (value !== undefined) {
+      updateValues.value = value;
+      try {
+        const parsed = JSON.parse(value);
+        const bitmask = parsed?.settings?.database;
+        if (typeof bitmask === 'number' && BitmaskToDatabaseVendor[bitmask]) {
+          updateValues.database = BitmaskToDatabaseVendor[bitmask];
+        }
+      } catch {
+        // value is not JSON or does not contain settings.database
+      }
+    }
+    if (isDatabaseVendor(database)) {
+      updateValues.database = database;
+    }
 
     await db
       .update(schema.schemas)
@@ -266,6 +319,22 @@ app.delete('/api/schemas/:id', async (req, res) => {
   }
 });
 
+/**
+ * `chat_messages.context_tables` holds a JSON array of table names. Rows
+ * predating the column are null, so callers always get a plain array back.
+ */
+const parseContextTables = (raw: unknown): string[] => {
+  if (typeof raw !== 'string' || raw.length === 0) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(v => typeof v === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+};
+
 // GET /api/schemas/:schemaId/chat - Fetch paginated chat messages for a schema
 app.get('/api/schemas/:schemaId/chat', async (req, res) => {
   try {
@@ -308,6 +377,8 @@ app.get('/api/schemas/:schemaId/chat', async (req, res) => {
     const formatted = messagesList.map((m: any) => ({
       role: m.role,
       content: m.message,
+      focusedTable: m.focusedTable ?? undefined,
+      contextTables: parseContextTables(m.contextTables),
     }));
 
     res.json(formatted);
@@ -343,37 +414,31 @@ app.delete('/api/schemas/:schemaId/chat', async (req, res) => {
   }
 });
 
-// POST /api/chat - Talk to AI assistant with DDL schema context
+// POST /api/chat - Talk to AI assistant with layered schema context
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, ddlContext, schemaId, focusedTable } = req.body;
+    const { messages, schemaContext, schemaId } = req.body as {
+      messages?: unknown;
+      schemaContext?: SchemaContext | null;
+      schemaId?: string;
+    };
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
     }
 
     const aiClient = getAiClient();
+    const context = schemaContext ?? null;
 
-    const systemPrompt = `You are an expert Database Architect AI. You help developers design, structure, improve, and explain their database schemas.
-${focusedTable ? `\nIMPORTANT: The user has currently focused their attention on the table: '${focusedTable}'. Prioritize this table and its relationships in your analysis.\n` : ''}
-${ddlContext ? `Here is the current database DDL schema${focusedTable ? ' (filtered to the focused table and its relationships)' : ''}:\n\`\`\`sql\n${ddlContext}\n\`\`\`` : 'Currently, the diagram has no tables defined.'}
-
-Instructions:
-1. Explain structural details in a clear and pedagogical way if the user asks for explanations.
-2. If you suggest modifications, additions, or a new database structure:
-   - Provide the complete or partial SQL DDL script needed for those changes.
-   - Always put the SQL script inside standard markdown blocks with the sql language identifier, e.g.:
-     \`\`\`sql
-     CREATE TABLE users (...);
-     \`\`\`
-   - Do NOT mix text explanations within the SQL block. The UI will parse any \`\`\`sql block to let the user import it directly into their visual canvas.
-   - For modifications to existing tables (like adding columns), you can output the full updated \`CREATE TABLE table_name (...)\` statement. The merger will automatically overwrite the old table with the new definition.
-   - CRITICAL: If you rename a table, do NOT just output \`CREATE TABLE new_table_name (...)\`. You MUST output an explicit \`ALTER TABLE old_table_name RENAME TO new_table_name;\` statement so the system knows to rename the table instead of creating a duplicate table.
-   - Similarly, if you rename columns, prefer using explicit \`ALTER TABLE table_name RENAME COLUMN old_col TO new_col;\` statements.
-3. Be helpful, concise, and professional.`;
+    // Recorded on both the question and the answer, so the conversation shows
+    // what each exchange was grounded on.
+    const focusedTable = context?.focusedTable ?? null;
+    const contextTables = context?.tables.length
+      ? JSON.stringify(context.tables.map(t => t.name))
+      : null;
 
     const fullMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages,
+      { role: 'system', content: buildSystemPrompt(context) },
+      ...buildConversation(messages as any, context),
     ];
 
     const reply = await aiClient.generateChatResponse(fullMessages as any);
@@ -414,6 +479,8 @@ Instructions:
             chatId,
             role: 'user',
             message: lastUserMessage.content,
+            focusedTable,
+            contextTables,
             createdAt: new Date(now.getTime() - 1000),
           });
         }
@@ -424,6 +491,8 @@ Instructions:
           chatId,
           role: 'assistant',
           message: reply,
+          focusedTable,
+          contextTables,
           createdAt: now,
         });
       } catch (dbErr) {

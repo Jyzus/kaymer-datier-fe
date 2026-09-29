@@ -4,7 +4,6 @@ import Fues from 'fuse.js';
 import { isEmpty } from 'lodash-es';
 
 import { AppContext } from '@/components/appContext';
-import { menus as databaseMenus } from '@/components/erd/erd-context-menu/menus/databaseMenus';
 import { menus as drawRelationshipMenus } from '@/components/erd/erd-context-menu/menus/drawRelationshipMenus';
 import { menus as columnNameCaseMenus } from '@/components/generator-code/generator-code-context-menu/menus/columnNameCaseMenus';
 import { menus as languageMenus } from '@/components/generator-code/generator-code-context-menu/menus/languageMenus';
@@ -21,7 +20,6 @@ import {
   changeBracketTypeAction,
   changeCanvasTypeAction,
   changeColumnNameCaseAction,
-  changeDatabaseAction,
   changeLanguageAction,
   changeTableNameCaseAction,
   scrollToAction,
@@ -59,30 +57,6 @@ export function createScopeActions(app: AppContext): Action[] {
 
   return [
     ...allScopeActions,
-    {
-      icon: html`<${Icon} prefix="mdi" name="database" size=${16} />`,
-      name: 'Database',
-      next: databaseMenus.map<Action>(menu => ({
-        icon:
-          menu.value === settings.database
-            ? html`<${Icon} name="check" size=${16} />`
-            : null,
-        name: menu.name,
-        perform: ({ store }) => {
-          store.dispatch(
-            changeDatabaseAction({
-              value: menu.value,
-            })
-          );
-        },
-      })),
-      filter: ({ store }) => {
-        return (
-          store.state.settings.canvasType === CanvasType.ERD ||
-          store.state.settings.canvasType === CanvasType.schemaSQL
-        );
-      },
-    },
     {
       icon: html`<${Icon} name="file-import" size=${16} />`,
       name: 'Import',

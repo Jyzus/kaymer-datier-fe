@@ -1,3 +1,4 @@
+import { toJson } from '@dineug/erd-editor-schema';
 import { delay } from '@dineug/go';
 import {
   createRef,
@@ -10,6 +11,7 @@ import {
 } from '@dineug/r-html';
 
 import { useAppContext } from '@/components/appContext';
+import { menus as databaseMenus } from '@/components/erd/erd-context-menu/menus/databaseMenus';
 import Button from '@/components/primitives/button/Button';
 import Menu from '@/components/primitives/context-menu/menu/Menu';
 import Icon from '@/components/primitives/icon/Icon';
@@ -29,12 +31,17 @@ import {
   changeMaxWidthCommentAction,
   changeRelationshipDataTypeSyncAction,
 } from '@/engine/modules/settings/atom.actions';
+import { convertAllColumnDataTypesAction$ } from '@/engine/modules/table-column/generator.actions';
 import { fontSize6 } from '@/styles/typography.styles';
 import { bHas } from '@/utils/bit';
 import { recalculateTableWidth } from '@/utils/calcTable';
+import {
+  convertSchemaValueToDatabase,
+  previewColumnTypeConversion,
+} from '@/utils/dataType/convertDataType';
 import { onPrevent } from '@/utils/domEvent';
 import { relationshipSort } from '@/utils/draw-relationship/sort';
-import { openToastAction } from '@/utils/emitter';
+import { duplicateToEngineAction, openToastAction } from '@/utils/emitter';
 import { FlipAnimation } from '@/utils/flipAnimation';
 import { fromShadowDraggable } from '@/utils/rx-operators/fromShadowDraggable';
 import {
@@ -58,11 +65,56 @@ const Settings: FC<SettingsProps> = (props, ctx) => {
 
   const state = observable({
     lnb: Lnb.preferences as Lnb,
+    isOpenEngineModal: false,
+    targetDatabase: -1 as number,
   });
 
   const handleChangeRelationshipDataTypeSync = (value: boolean) => {
     const { store } = app.value;
     store.dispatch(changeRelationshipDataTypeSyncAction({ value }));
+  };
+
+  const handleOpenEngineModal = () => {
+    state.targetDatabase = app.value.store.state.settings.database;
+    state.isOpenEngineModal = true;
+  };
+
+  const handleCloseEngineModal = () => {
+    state.isOpenEngineModal = false;
+  };
+
+  const handleSelectTargetDatabase = (event: Event) => {
+    const el = event.target as HTMLSelectElement | null;
+    if (el) state.targetDatabase = Number(el.value);
+  };
+
+  const handleConvertEngine = () => {
+    const { store } = app.value;
+    if (state.targetDatabase !== store.state.settings.database) {
+      store.dispatch(convertAllColumnDataTypesAction$(state.targetDatabase));
+    }
+    handleCloseEngineModal();
+  };
+
+  const handleDuplicateEngine = () => {
+    const { store, emitter } = app.value;
+    if (state.targetDatabase === store.state.settings.database) {
+      handleCloseEngineModal();
+      return;
+    }
+    // Convert a copy of the current diagram (does NOT mutate this schema) and
+    // hand it to the host app, which creates the new schema via the backend.
+    const { value } = convertSchemaValueToDatabase(
+      toJson(store.state),
+      state.targetDatabase
+    );
+    emitter.emit(
+      duplicateToEngineAction({
+        database: engineName(state.targetDatabase),
+        value,
+      })
+    );
+    handleCloseEngineModal();
   };
 
   const handleRecalculationTableWidth = () => {
@@ -159,10 +211,22 @@ const Settings: FC<SettingsProps> = (props, ctx) => {
     );
   };
 
+  const engineName = (value: number) =>
+    databaseMenus.find(menu => menu.value === value)?.name ?? 'Unknown';
+
   return () => {
     const { store } = app.value;
     const { settings } = store.state;
     const maxWidthCommentDisabled = settings.maxWidthComment === -1;
+
+    const enginePreviews = state.isOpenEngineModal
+      ? previewColumnTypeConversion(store.state, state.targetDatabase)
+      : [];
+    const engineChanged = enginePreviews.filter(
+      preview => preview.changed && !preview.unmapped
+    );
+    const engineUnmapped = enginePreviews.filter(preview => preview.unmapped);
+    const engineSame = state.targetDatabase === settings.database;
 
     return html`
       <div class=${styles.root} ${ref(root)}>
@@ -176,6 +240,23 @@ const Settings: FC<SettingsProps> = (props, ctx) => {
             ${state.lnb === Lnb.preferences
               ? html`
                   <div class=${styles.section}>
+                    <div class=${styles.row}>
+                      <div>Motor de base de datos</div>
+                      <div class=${styles.vertical(16)}></div>
+                      <div>
+                        ${databaseMenus.find(
+                          menu => menu.value === settings.database
+                        )?.name ?? 'Unknown'}
+                      </div>
+                      <div class=${styles.vertical(8)}></div>
+                      <${Button}
+                        variant="soft"
+                        size="1"
+                        text="Cambiar…"
+                        .onClick=${handleOpenEngineModal}
+                      />
+                    </div>
+
                     <div class=${styles.row}>
                       <div>Relationship DataType Sync</div>
                       <div class=${styles.vertical(16)}></div>
@@ -279,6 +360,122 @@ const Settings: FC<SettingsProps> = (props, ctx) => {
           </div>
         </div>
       </div>
+      ${state.isOpenEngineModal
+        ? html`
+            <div
+              class=${styles.modalOverlay}
+              @mousedown=${handleCloseEngineModal}
+            >
+              <div
+                class=${styles.modalContent}
+                @mousedown=${(e: MouseEvent) => e.stopPropagation()}
+              >
+                <h3 class=${styles.modalTitle}>
+                  Cambiar motor de base de datos
+                </h3>
+                <div class=${styles.row}>
+                  <div>Motor destino</div>
+                  <div class=${styles.vertical(16)}></div>
+                  <select
+                    class=${styles.modalSelect}
+                    .value=${String(state.targetDatabase)}
+                    @change=${handleSelectTargetDatabase}
+                  >
+                    ${databaseMenus.map(
+                      menu => html`
+                        <option
+                          value=${menu.value}
+                          ?selected=${menu.value === state.targetDatabase}
+                        >
+                          ${menu.name}
+                        </option>
+                      `
+                    )}
+                  </select>
+                </div>
+                <div class=${styles.modalWarning}>
+                  ${engineSame
+                    ? html`Elige un motor distinto de
+                        <span class=${styles.modalWarningStrong}
+                          >${engineName(settings.database)}</span
+                        >
+                        para convertir.`
+                    : html`Se convertirán
+                        <span class=${styles.modalWarningStrong}
+                          >${engineChanged.length}</span
+                        >
+                        columna(s) de
+                        <span class=${styles.modalWarningStrong}
+                          >${engineName(settings.database)}</span
+                        >
+                        a
+                        <span class=${styles.modalWarningStrong}
+                          >${engineName(state.targetDatabase)}</span
+                        >.${engineUnmapped.length
+                          ? html` <span class=${styles.previewBadge}
+                              >${engineUnmapped.length} sin equivalente exacto
+                              (se dejan tal cual, revisar).</span
+                            >`
+                          : null}`}
+                </div>
+                ${!engineSame && enginePreviews.length
+                  ? html`
+                      <div class=${styles.previewList}>
+                        ${enginePreviews.map(
+                          preview => html`
+                            <div
+                              class=${[
+                                styles.previewRow,
+                                preview.unmapped ? 'unmapped' : '',
+                              ]}
+                            >
+                              <span class=${styles.previewColumn}
+                                >${preview.tableName}.${preview.columnName}</span
+                              >
+                              <span class=${styles.previewFrom}
+                                >${preview.from || '∅'}</span
+                              >
+                              <span>→</span>
+                              <span class=${styles.previewTo}
+                                >${preview.to || '∅'}</span
+                              >
+                              ${preview.unmapped
+                                ? html`<span class=${styles.previewBadge}
+                                    >revisar</span
+                                  >`
+                                : null}
+                            </div>
+                          `
+                        )}
+                      </div>
+                    `
+                  : null}
+                <div class=${styles.modalActions}>
+                  <button
+                    class="${styles.modalButton} cancel"
+                    @click=${handleCloseEngineModal}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    class="${styles.modalButton} cancel"
+                    ?disabled=${engineSame}
+                    @click=${handleDuplicateEngine}
+                  >
+                    Crear copia
+                  </button>
+                  <button
+                    class="${styles.modalButton} confirm"
+                    ?disabled=${engineSame}
+                    @click=${handleConvertEngine}
+                  >
+                    Convertir aquí
+                  </button>
+                </div>
+              </div>
+            </div>
+          `
+        : null}
     `;
   };
 };

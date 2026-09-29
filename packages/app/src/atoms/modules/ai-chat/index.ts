@@ -6,7 +6,9 @@ export const aiChatOpenAtom = atom<boolean>(false);
 
 export const activeEditorAtom = atom<any | null>(null);
 
-// Momentary focus: set from ERD table context menu → auto-cleared after sending
+// Momentary focus: set from the ERD table context menu and cleared as soon as
+// the message is sent, so a reference applies to a single exchange and never
+// silently carries over to the next question.
 export const focusedTableAtom = atom<string | null>(null);
 
 export const activeChatMessagesAtom = atom<ChatMessage[]>([]);

@@ -26,6 +26,7 @@ const InternalActionType = {
   mouseTrackerEnd: 'mouseTrackerEnd',
   openDiffViewer: 'openDiffViewer',
   focusTableForAI: 'focusTableForAI',
+  duplicateToEngine: 'duplicateToEngine',
 } as const;
 type InternalActionType = ValuesType<typeof InternalActionType>;
 
@@ -62,6 +63,12 @@ type InternalActionMap = {
   };
   [InternalActionType.focusTableForAI]: {
     tableName: string;
+  };
+  [InternalActionType.duplicateToEngine]: {
+    // Vendor name of the target engine (e.g. 'PostgreSQL')
+    database: string;
+    // Diagram JSON already converted to the target engine
+    value: string;
   };
 };
 
@@ -157,3 +164,7 @@ export const openDiffViewerAction = createAction<
 export const focusTableForAIAction = createAction<
   InternalActionMap[typeof InternalActionType.focusTableForAI]
 >(InternalActionType.focusTableForAI);
+
+export const duplicateToEngineAction = createAction<
+  InternalActionMap[typeof InternalActionType.duplicateToEngine]
+>(InternalActionType.duplicateToEngine);

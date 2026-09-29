@@ -18,6 +18,7 @@ import {
   useUpdateSchemaEntity,
 } from '@/atoms/modules/schema';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
+import DatabaseBadge from '@/components/database-badge/DatabaseBadge';
 import SidebarCollaborative from '@/components/sidebar/sidebar-item/sidebar-collaborative/SidebarCollaborative';
 import { SchemaEntity } from '@/services/indexeddb/modules/schema';
 
@@ -95,15 +96,18 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ entity }) => {
         styles.item,
       ]}
       align="center"
+      gap="2"
       data-selected={selected && !isEditing}
       data-open-menu={open}
       onClick={() => handleSelectSchema()}
     >
+      <DatabaseBadge vendor={entity.database} />
+
       {isEditing ? (
         <TextField.Root css={styles.text}>
           <TextField.Input
             value={name}
-            placeholder="schema name"
+            placeholder="Nombre del esquema"
             autoFocus
             onChange={handleChange}
             onBlur={handleStopEditing}
@@ -115,6 +119,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ entity }) => {
           css={[styles.text, styles.ellipsis]}
           size="2"
           onDoubleClick={handleStartEditing}
+          title={entity.name}
         >
           {entity.name}
         </Text>

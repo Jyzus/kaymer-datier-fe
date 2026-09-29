@@ -5,6 +5,7 @@ import { selectedProjectIdAtom } from '@/atoms/modules/project';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 import { getAppDatabaseService } from '@/services/indexeddb';
 import { SchemaEntity } from '@/services/indexeddb/modules/schema';
+import { DatabaseVendor } from '@/utils/api';
 import {
   addSchemaEntityAction,
   deleteSchemaEntityAction,
@@ -37,7 +38,14 @@ const updateSchemaEntitiesAtom = atom(null, async (get, set) => {
 
 const addSchemaEntityAtom = atom(
   null,
-  async (get, set, entityValue: Pick<SchemaEntity, 'name'>) => {
+  async (
+    get,
+    set,
+    entityValue: Pick<SchemaEntity, 'name'> & {
+      database: DatabaseVendor;
+      value?: string;
+    }
+  ) => {
     const projectId = get(selectedProjectIdAtom);
     if (!projectId) throw new Error('No active project selected');
 

@@ -15,6 +15,20 @@
       "when": 1783907622154,
       "tag": "0001_careful_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784586254865,
+      "tag": "0002_sudden_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784666129335,
+      "tag": "0003_hard_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

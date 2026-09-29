@@ -18,6 +18,17 @@ function createColumn(data: any) {
 }
 
 /**
+ * Genera el JSON (V3) de un esquema vacío con el motor de base de datos ya
+ * fijado en settings.database. Se usa al crear un esquema para que nazca con
+ * el motor elegido en lugar de caer al default silencioso (MySQL).
+ */
+export function createInitialSchemaValue(databaseBitmask: number): string {
+  const schema = schemaV3Parser({});
+  schema.settings.database = databaseBitmask;
+  return toJson(schema);
+}
+
+/**
  * Convierte código SQL DDL puro a JSON Schema (V3)
  * para inyectar en la base de datos de Datier.
  */

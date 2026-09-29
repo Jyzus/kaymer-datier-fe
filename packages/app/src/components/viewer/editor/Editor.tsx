@@ -11,9 +11,11 @@ import {
   focusedTableAtom,
 } from '@/atoms/modules/ai-chat';
 import { nicknameStorageAtom } from '@/atoms/modules/collaborative';
+import { useAddSchemaEntity } from '@/atoms/modules/schema';
 import { useReplicationSchemaEntity } from '@/atoms/modules/sidebar';
 import { themeAtom } from '@/atoms/modules/theme';
 import { SchemaEntity } from '@/services/indexeddb/modules/schema';
+import { DatabaseVendor } from '@/utils/api';
 import { bridge } from '@/utils/broadcastChannel';
 
 import * as styles from './Editor.styles';
@@ -34,9 +36,12 @@ const Editor: React.FC<EditorProps> = props => {
   const nickname = useAtomValue(nicknameStorageAtom);
   const nicknameRef = useRef(nickname);
   nicknameRef.current = nickname;
+  const entityRef = useRef(props.entity);
+  entityRef.current = props.entity;
   const setActiveEditor = useSetAtom(activeEditorAtom);
   const setFocusedTable = useSetAtom(focusedTableAtom);
   const setAiChatOpen = useSetAtom(aiChatOpenAtom);
+  const addSchemaEntity = useAddSchemaEntity();
 
   useLayoutEffect(() => {
     const $viewer = viewerRef.current;
@@ -81,6 +86,24 @@ const Editor: React.FC<EditorProps> = props => {
       handleFocusTableForAI as EventListener
     );
 
+    // Listen for "Duplicate into another engine" from Settings: create a new
+    // schema in the target engine seeded with the already-converted diagram.
+    const handleDuplicateToEngine = (event: CustomEvent) => {
+      const { database, value } = event.detail as {
+        database: DatabaseVendor;
+        value: string;
+      };
+      addSchemaEntity({
+        name: `${entityRef.current.name} (${database})`,
+        database,
+        value,
+      });
+    };
+    editor.addEventListener(
+      'duplicateToEngine',
+      handleDuplicateToEngine as EventListener
+    );
+
     const handleChangePresetTheme = (event: Event) => {
       const e = event as CustomEvent;
 
@@ -102,12 +125,25 @@ const Editor: React.FC<EditorProps> = props => {
         'focusTableForAI',
         handleFocusTableForAI as EventListener
       );
+      editor.removeEventListener(
+        'duplicateToEngine',
+        handleDuplicateToEngine as EventListener
+      );
       Array.from(unsubscribeSet).forEach(unsubscribe => unsubscribe());
       unsubscribeSet.clear();
       editor.destroy();
       editorRef.current = null;
     };
-  }, [setTheme, replicationSchemaEntity, props.entity.id, props.entity.value]);
+  }, [
+    setTheme,
+    replicationSchemaEntity,
+    props.entity.id,
+    props.entity.value,
+    addSchemaEntity,
+    setActiveEditor,
+    setAiChatOpen,
+    setFocusedTable,
+  ]);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;

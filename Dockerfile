@@ -38,16 +38,15 @@ FROM node:20-slim AS runner
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-# Copy workspace setup and built code
+# Copy the fully-resolved node_modules (pnpm store + workspace symlinks) and all
+# built packages from the builder, preserving the exact monorepo layout the
+# server relies on (it imports several workspace packages at runtime —
+# @dineug/erd-editor-schema, @dineug/schema-sql-parser and their transitive deps
+# @dineug/shared, @dineug/go, @dineug/r-html — and resolves the frontend/drizzle
+# via relative paths). This avoids fragile per-package copies and re-installs.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY --from=builder /app/packages/server/dist ./packages/server/dist
-COPY --from=builder /app/packages/server/package.json ./packages/server/package.json
-COPY --from=builder /app/packages/server/drizzle.config.ts ./packages/server/drizzle.config.ts
-COPY --from=builder /app/packages/server/drizzle ./packages/server/drizzle
-COPY --from=builder /app/packages/app/dist ./packages/app/dist
-
-# Install production dependencies for the server package only
-RUN pnpm install --prod --ignore-scripts --no-frozen-lockfile --filter @dineug/erd-editor-server
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
 
 # Standard production environment configurations
 ENV PORT=3000

@@ -1,7 +1,6 @@
 import { FC, html, onMounted } from '@dineug/r-html';
 
 import { useAppContext } from '@/components/appContext';
-import { createDatabaseMenus } from '@/components/erd/erd-context-menu/menus/databaseMenus';
 import ContextMenu from '@/components/primitives/context-menu/ContextMenu';
 import Icon from '@/components/primitives/icon/Icon';
 import { useUnmounted } from '@/hooks/useUnmounted';
@@ -31,32 +30,6 @@ const SchemaSQLContextMenu: FC<SchemaSQLContextMenuProps> = (props, ctx) => {
   return () => html`
     <${ContextMenu.Root}
       children=${html`
-        <${ContextMenu.Item}
-          children=${html`
-            <${ContextMenu.Menu}
-              icon=${html`
-                <${Icon} prefix="mdi" name="database" size=${14} />
-              `}
-              name="Database"
-              right=${chevronRightIcon}
-            />
-          `}
-          subChildren=${html`${createDatabaseMenus(app.value).map(
-            menu => html`
-              <${ContextMenu.Item}
-                .onClick=${menu.onClick}
-                children=${html`
-                  <${ContextMenu.Menu}
-                    icon=${menu.checked
-                      ? html`<${Icon} name="check" size=${14} />`
-                      : null}
-                    name=${menu.name}
-                  />
-                `}
-              />
-            `
-          )}`}
-        />
         <${ContextMenu.Item}
           children=${html`
             <${ContextMenu.Menu}

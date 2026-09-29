@@ -8,6 +8,12 @@ export const root = css`
   outline: none;
 `;
 
+// Soft validation: the type is not recognized for the current engine. We only
+// hint at it (a subtle warning underline) — we never block the input.
+export const invalid = css`
+  box-shadow: inset 0 -1.5px 0 0 var(--red-9, #e5484d);
+`;
+
 export const hint = css`
   position: absolute;
   z-index: 1;

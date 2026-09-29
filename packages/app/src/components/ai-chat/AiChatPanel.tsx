@@ -1,19 +1,19 @@
 import {
+  ArrowDownIcon,
   CheckIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
+  CopyIcon,
   Cross1Icon,
+  Cross2Icon,
+  Link2Icon,
   MagicWandIcon,
+  MagnifyingGlassIcon,
   PaperPlaneIcon,
+  PersonIcon,
+  TableIcon,
+  TargetIcon,
 } from '@radix-ui/react-icons';
-import {
-  Button,
-  Flex,
-  Heading,
-  IconButton,
-  Text,
-  TextArea,
-} from '@radix-ui/themes';
+import { Button, Flex, Heading, IconButton, Text } from '@radix-ui/themes';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import React, { useEffect, useRef, useState } from 'react';
 
@@ -31,6 +31,8 @@ import {
 } from '@/atoms/modules/ai-chat';
 import { selectedSchemaIdAtom } from '@/atoms/modules/sidebar';
 import { api, ChatMessage } from '@/utils/api';
+import { copyToClipboard } from '@/utils/clipboard';
+import { buildSchemaContext, SchemaContext } from '@/utils/schemaContext';
 
 import * as styles from './AiChatPanel.styles';
 
@@ -264,50 +266,81 @@ const mergeDDL = (currentSql: string, newSql: string): string => {
 };
 
 /**
- * Extracts only the CREATE TABLE blocks for a focused table and its directly
- * related tables (FK references in or out). Falls back to full DDL on error.
+ * Shows which table an exchange was grounded on. Rendered on both the question
+ * and the answer so a reply can always be traced back to its reference, even
+ * after the focus has moved on or the page was reloaded.
  */
-const filterDDLByTable = (fullDDL: string, tableName: string): string => {
-  try {
-    const lowerTarget = tableName.toLowerCase();
-    // Split into individual statements
-    const statements = fullDDL
-      .split(/;\s*\n/)
-      .map(s => s.trim())
-      .filter(Boolean);
+const MessageReference: React.FC<{ message: ChatMessage }> = ({ message }) => {
+  const { focusedTable, contextTables } = message;
+  if (!focusedTable) return null;
 
-    // Find the focused table statement
-    const focused = statements.find(s =>
-      s.toLowerCase().includes(`create table ${lowerTarget}`)
-    );
-    if (!focused) return fullDDL;
+  // Tables sent alongside the focused one (its direct relationships).
+  const others = (contextTables ?? []).filter(name => name !== focusedTable);
 
-    // Gather names of tables referenced by FK in the focused table
-    const referenced = new Set<string>();
-    const fkRegex = /references\s+(\w+)\s*\(/gi;
-    let m: RegExpExecArray | null;
-    while ((m = fkRegex.exec(focused)) !== null) {
-      referenced.add(m[1].toLowerCase());
-    }
-
-    // Also include tables that have FK pointing TO the focused table
-    const related = statements.filter(s => {
-      const lower = s.toLowerCase();
-      if (!lower.startsWith('create table')) return false;
-      const nameMatch = lower.match(/create table (\w+)/);
-      if (!nameMatch) return false;
-      const stmtName = nameMatch[1].toLowerCase();
-      if (stmtName === lowerTarget) return false; // already included
-      return (
-        referenced.has(stmtName) || lower.includes(`references ${lowerTarget}`)
-      );
-    });
-
-    return [focused, ...related].join(';\n\n') + ';';
-  } catch {
-    return fullDDL;
-  }
+  return (
+    <div
+      css={styles.messageReference}
+      title={
+        others.length > 0
+          ? `Contexto enviado: ${[focusedTable, ...others].join(', ')}`
+          : `Contexto enviado: ${focusedTable}`
+      }
+    >
+      <TargetIcon width="11" height="11" />
+      <span>
+        Ref. <strong>{focusedTable}</strong>
+        {others.length > 0 && ` +${others.length}`}
+      </span>
+    </div>
+  );
 };
+
+/** Small copy-to-clipboard button with a transient "copied" confirmation. */
+const CopyButton: React.FC<{ value: string; label?: string }> = ({
+  value,
+  label,
+}) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await copyToClipboard(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      css={styles.iconAction}
+      onClick={handleCopy}
+      title="Copiar"
+    >
+      {copied ? (
+        <CheckIcon width="12" height="12" />
+      ) : (
+        <CopyIcon width="12" height="12" />
+      )}
+      {label && <span>{copied ? 'Copiado' : label}</span>}
+    </button>
+  );
+};
+
+// Starter prompts shown on an empty conversation to make the assistant's
+// capabilities discoverable and save the first keystrokes.
+const SUGGESTIONS: Array<{ icon: React.ReactNode; text: string }> = [
+  {
+    icon: <TableIcon width="15" height="15" />,
+    text: 'Crea una tabla de usuarios con autenticación',
+  },
+  {
+    icon: <Link2Icon width="15" height="15" />,
+    text: 'Relaciona pedidos con clientes y productos',
+  },
+  {
+    icon: <MagnifyingGlassIcon width="15" height="15" />,
+    text: 'Revisa mi esquema y sugiere mejoras o índices',
+  },
+];
 
 export const AiChatPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useAtom(aiChatOpenAtom);
@@ -326,7 +359,23 @@ export const AiChatPanel: React.FC = () => {
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  };
+
+  // Keep the textarea height matched to its content, within CSS bounds.
+  const autoGrow = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
 
   // Trigger initial chat loading when active schema changes
   useEffect(() => {
@@ -337,60 +386,97 @@ export const AiChatPanel: React.FC = () => {
 
   // Scroll to bottom when new messages arrive (non-historical ones)
   useEffect(() => {
-    if (scrollRef.current && !loadingHistory) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (!loadingHistory) scrollToBottom();
   }, [messages, isOpen, loading, loadingHistory]);
+
+  // Shrink the textarea back once its content is cleared.
+  useEffect(() => {
+    if (!input) autoGrow();
+  }, [input]);
 
   // Only render panel if a schema is selected
   if (!schemaId) return null;
+
+  // Show the "scroll to latest" pill only when the user has scrolled up.
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollButton(distanceFromBottom > 120);
+  };
+
+  const runSuggestion = (text: string) => {
+    setInput(text);
+    textareaRef.current?.focus();
+    requestAnimationFrame(autoGrow);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || !schemaId || loading) return;
 
     const userMsgText = input.trim();
-    const currentFocus = focusedTable; // Capture before clearing
+    // A reference applies to a single exchange: capture the focus, then clear it
+    // so the chip disappears and the next message starts without a reference.
+    const currentFocus = focusedTable;
+    setFocusedTable(null);
     setInput('');
-    setFocusedTable(null); // Clear focus immediately (momentary)
     setLoading(true);
 
-    const userMessage: ChatMessage = { role: 'user', content: userMsgText };
+    // 1. Build the layered context from the editor document (not the DDL text).
+    // Done before echoing the message so the bubble can already show which
+    // table the exchange references.
+    let schemaContext: SchemaContext | null = null;
+    let includedTables: string[] = [];
+    let unresolvedFocus: string | undefined;
+    if (activeEditor) {
+      const result = buildSchemaContext(activeEditor.value, currentFocus, {
+        question: userMsgText,
+      });
+      schemaContext = result.context;
+      includedTables = result.includedTables;
+      unresolvedFocus = result.unresolvedFocus;
+      if (result.error) {
+        console.error('Error building schema context:', result.error);
+      }
+    }
+
+    // The reference travels with both sides of the exchange, mirroring what the
+    // server persists, so it survives a reload of the conversation.
+    const reference = currentFocus
+      ? { focusedTable: currentFocus, contextTables: includedTables }
+      : {};
+
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: userMsgText,
+      ...reference,
+    };
     const updatedMessages = [...messages, userMessage];
 
     // Optimistically update conversation history
     addChatMessages([userMessage]);
 
+    if (unresolvedFocus) {
+      // Never silently fall back to the whole schema: that is exactly how the
+      // assistant ends up answering about an unrelated table.
+      addChatMessages([
+        {
+          role: 'assistant',
+          content: `⚠️ No encontré la tabla enfocada **${unresolvedFocus}** en el diagrama (¿fue renombrada o eliminada?). Quita el enfoque o vuelve a enfocarla para continuar.`,
+        },
+      ]);
+      setLoading(false);
+      return;
+    }
+
     try {
-      // 1. Extract DDL — filter to focused table + related tables if focus is set
-      let ddlContext = '';
-      if (activeEditor) {
-        try {
-          const fullDDL = activeEditor.getSchemaSQL() as string;
-          if (currentFocus) {
-            ddlContext = filterDDLByTable(fullDDL, currentFocus);
-          } else {
-            ddlContext = fullDDL;
-          }
-        } catch (err) {
-          console.error('Error fetching schema SQL:', err);
-        }
-      }
-
       // 2. Call backend chat API
-      const res = await api.sendChat(
-        updatedMessages,
-        ddlContext,
-        schemaId,
-        currentFocus ?? undefined
-      );
-
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: res.reply,
-      };
+      const res = await api.sendChat(updatedMessages, schemaContext, schemaId);
 
       // 3. Save final conversation history locally
-      addChatMessages([assistantMessage]);
+      addChatMessages([
+        { role: 'assistant', content: res.reply, ...reference },
+      ]);
     } catch (err: any) {
       console.error(err);
       addChatMessages([
@@ -432,23 +518,27 @@ export const AiChatPanel: React.FC = () => {
         css={styles.toggleHandle(isOpen)}
         onClick={() => setIsOpen(!isOpen)}
         title={isOpen ? 'Cerrar Asistente de IA' : 'Abrir Asistente de IA'}
+        aria-label={isOpen ? 'Cerrar Asistente de IA' : 'Abrir Asistente de IA'}
       >
         {isOpen ? (
           <ChevronRightIcon width="16" height="16" />
         ) : (
-          <ChevronLeftIcon width="16" height="16" />
+          <MagicWandIcon width="18" height="18" />
         )}
       </div>
 
       {/* Header */}
       <div css={styles.header}>
         <Flex align="center" gap="2">
-          <MagicWandIcon
-            width="18"
-            height="18"
-            style={{ color: 'var(--accent-9)' }}
-          />
-          <Heading size="3">Asistente de IA (DB)</Heading>
+          <span css={styles.headerBadge}>
+            <MagicWandIcon width="16" height="16" />
+          </span>
+          <Flex direction="column">
+            <Heading size="3">Asistente de IA</Heading>
+            <Text size="1" color="gray">
+              Diseño de base de datos
+            </Text>
+          </Flex>
         </Flex>
         <Flex align="center" gap="2">
           {messages.length > 0 && (
@@ -478,123 +568,184 @@ export const AiChatPanel: React.FC = () => {
       </div>
 
       {/* Messages */}
-      <div css={styles.scrollArea} ref={scrollRef}>
-        {hasMore && (
-          <Flex justify="center" style={{ margin: '8px 0 16px 0' }}>
-            <Button
-              size="1"
-              variant="ghost"
-              disabled={loadingHistory}
-              onClick={() => loadMoreChatHistory(schemaId)}
-              style={{ cursor: 'pointer' }}
-            >
-              {loadingHistory ? 'Cargando...' : 'Cargar mensajes anteriores'}
-            </Button>
-          </Flex>
-        )}
-
-        {messages.length === 0 && !loadingHistory && (
-          <Flex
-            direction="column"
-            align="center"
-            justify="center"
-            style={{ flexGrow: 1, padding: 20 }}
-            gap="3"
-          >
-            <MagicWandIcon
-              width="32"
-              height="32"
-              style={{ color: 'var(--gray-8)', opacity: 0.5 }}
-            />
-            <Text size="2" color="gray" align="center">
-              Pregúntame cosas sobre tu base de datos, pídeme crear tablas,
-              relaciones o que te explique campos específicos.
-            </Text>
-          </Flex>
-        )}
-
-        {messages.map((msg, index) => {
-          const isUser = msg.role === 'user';
-          const blocks = parseMessageContent(msg.content);
-
-          return (
-            <div
-              key={index}
-              css={isUser ? styles.userMessage : styles.assistantMessage}
-            >
-              <Text
+      <div css={styles.messagesViewport}>
+        <div css={styles.scrollArea} ref={scrollRef} onScroll={handleScroll}>
+          {hasMore && (
+            <Flex justify="center" style={{ margin: '0 0 4px 0' }}>
+              <Button
                 size="1"
-                weight="medium"
-                style={{
-                  color: isUser ? 'var(--accent-11)' : 'var(--gray-9)',
-                  marginBottom: '2px',
-                }}
+                variant="ghost"
+                disabled={loadingHistory}
+                onClick={() => loadMoreChatHistory(schemaId)}
+                style={{ cursor: 'pointer' }}
               >
-                {isUser ? 'Tú' : 'Asistente IA'}
-              </Text>
+                {loadingHistory ? 'Cargando...' : 'Cargar mensajes anteriores'}
+              </Button>
+            </Flex>
+          )}
 
-              <div css={styles.bubble(isUser)}>
-                {blocks.map((block, bIdx) => {
-                  if (block.type === 'text') {
-                    return (
-                      <span key={bIdx}>{renderMarkdown(block.value)}</span>
-                    );
-                  } else {
-                    return (
-                      <div key={bIdx} css={styles.sqlActionBlock}>
-                        <div css={styles.sqlHeader}>
-                          <Text
-                            size="1"
-                            weight="bold"
-                            style={{ color: 'var(--accent-11)' }}
-                          >
-                            SQL GENERADO
-                          </Text>
-                          <Button
-                            size="1"
-                            variant="solid"
-                            onClick={() => handleApplySql(block.value)}
-                          >
-                            <CheckIcon /> Aplicar al Diagrama
-                          </Button>
-                        </div>
-                        <pre css={styles.sqlCode}>{block.value.trim()}</pre>
-                      </div>
-                    );
-                  }
-                })}
+          {messages.length === 0 && !loadingHistory && (
+            <div css={styles.emptyState}>
+              <span css={styles.emptyIcon}>
+                <MagicWandIcon width="26" height="26" />
+              </span>
+              <Flex direction="column" gap="1" align="center">
+                <Heading size="3">¿En qué te ayudo?</Heading>
+                <Text size="2" color="gray" align="center">
+                  Pídeme crear tablas y relaciones, o enfoca una tabla (clic
+                  derecho → Enfocar en chat IA) para preguntar sobre ella.
+                </Text>
+              </Flex>
+              <div css={styles.suggestionGrid}>
+                {SUGGESTIONS.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    css={styles.suggestionChip}
+                    onClick={() => runSuggestion(s.text)}
+                  >
+                    {s.icon}
+                    <span>{s.text}</span>
+                  </button>
+                ))}
               </div>
             </div>
-          );
-        })}
+          )}
 
-        {loading && (
-          <div css={styles.assistantMessage}>
-            <Text size="1" color="gray">
-              Asistente IA
-            </Text>
-            <div css={styles.typingIndicator}>
-              <div css={styles.dot('0s')} />
-              <div css={styles.dot('0.2s')} />
-              <div css={styles.dot('0.4s')} />
+          {messages.map((msg, index) => {
+            const isUser = msg.role === 'user';
+            const blocks = parseMessageContent(msg.content);
+
+            return (
+              <div key={index} css={styles.messageRow(isUser)}>
+                <div css={styles.messageMeta(isUser)}>
+                  <span css={styles.avatar(isUser)}>
+                    {isUser ? (
+                      <PersonIcon width="13" height="13" />
+                    ) : (
+                      <MagicWandIcon width="13" height="13" />
+                    )}
+                  </span>
+                  <span css={styles.roleLabel}>
+                    {isUser ? 'Tú' : 'Asistente IA'}
+                  </span>
+                  <MessageReference message={msg} />
+                </div>
+
+                <div css={styles.bubbleWrap(isUser)}>
+                  <div css={styles.bubble(isUser)}>
+                    {blocks.map((block, bIdx) => {
+                      if (block.type === 'text') {
+                        return (
+                          <span key={bIdx}>{renderMarkdown(block.value)}</span>
+                        );
+                      }
+                      return (
+                        <div key={bIdx} css={styles.sqlActionBlock}>
+                          <div css={styles.sqlHeader}>
+                            <Text
+                              size="1"
+                              weight="bold"
+                              style={{ color: 'var(--accent-11)' }}
+                            >
+                              SQL GENERADO
+                            </Text>
+                            <div css={styles.sqlHeaderActions}>
+                              <CopyButton value={block.value.trim()} />
+                              <Button
+                                size="1"
+                                variant="solid"
+                                onClick={() => handleApplySql(block.value)}
+                              >
+                                <CheckIcon /> Aplicar
+                              </Button>
+                            </div>
+                          </div>
+                          <pre css={styles.sqlCode}>{block.value.trim()}</pre>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {!isUser && (
+                    <div className="msg-actions" css={styles.messageActions}>
+                      <CopyButton value={msg.content} label="Copiar" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {loading && (
+            <div css={styles.messageRow(false)}>
+              <div css={styles.messageMeta(false)}>
+                <span css={styles.avatar(false)}>
+                  <MagicWandIcon width="13" height="13" />
+                </span>
+                <span css={styles.roleLabel}>Asistente IA</span>
+              </div>
+              <div css={styles.typingIndicator}>
+                <div css={styles.dot('0s')} />
+                <div css={styles.dot('0.2s')} />
+                <div css={styles.dot('0.4s')} />
+              </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {showScrollButton && (
+          <button
+            type="button"
+            css={styles.scrollToBottom}
+            onClick={scrollToBottom}
+          >
+            <ArrowDownIcon width="13" height="13" /> Ir al final
+          </button>
         )}
       </div>
 
       {/* Input */}
       <div css={styles.inputArea}>
+        {focusedTable && (
+          <div css={styles.focusChip}>
+            <TargetIcon width="13" height="13" />
+            <span css={styles.focusChipLabel}>
+              Enfocado en <strong>{focusedTable}</strong>
+            </span>
+            <button
+              type="button"
+              css={styles.focusChipClose}
+              title="Quitar enfoque"
+              aria-label="Quitar enfoque"
+              onClick={() => setFocusedTable(null)}
+            >
+              <Cross2Icon width="12" height="12" />
+            </button>
+          </div>
+        )}
         <div css={styles.unifiedInputWrapper}>
           <textarea
             required
+            ref={textareaRef}
             css={styles.customTextArea}
-            placeholder="Pregunta o pide cambios en el DDL..."
+            placeholder={
+              focusedTable
+                ? `Pregunta sobre "${focusedTable}"...`
+                : 'Pregunta o pide cambios en el DDL...'
+            }
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => {
+              setInput(e.target.value);
+              autoGrow();
+            }}
             onKeyDown={handleKeyDown}
-            rows={2}
+            rows={1}
           />
           <div css={styles.inputControls}>
+            <span css={styles.inputHint}>
+              <kbd>Enter</kbd> enviar · <kbd>Shift+Enter</kbd> nueva línea
+            </span>
             <IconButton
               size="2"
               variant="solid"

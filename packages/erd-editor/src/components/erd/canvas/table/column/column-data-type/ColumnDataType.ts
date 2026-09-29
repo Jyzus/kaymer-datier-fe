@@ -20,6 +20,7 @@ import Kbd from '@/components/primitives/kbd/Kbd';
 import { DatabaseHintMap, DataTypeHint } from '@/constants/sql/dataType';
 import { changeColumnDataTypeAction$ } from '@/engine/modules/table-column/generator.actions';
 import { useUnmounted } from '@/hooks/useUnmounted';
+import { isKnownDataType } from '@/utils/dataType/convertDataType';
 import { lastCursorFocus } from '@/utils/focus';
 
 import * as styles from './ColumnDataType.styles';
@@ -55,6 +56,11 @@ const ColumnDataType: FC<ColumnDataTypeProps> = (props, ctx) => {
   const root = createRef<HTMLDivElement>();
   const { addUnsubscribe } = useUnmounted();
 
+  const clearHints = () => {
+    state.index = -1;
+    state.hints = [];
+  };
+
   const setHints = (value: string) => {
     const { store } = app.value;
     const { settings } = store.state;
@@ -62,10 +68,15 @@ const ColumnDataType: FC<ColumnDataTypeProps> = (props, ctx) => {
     const newValue = value.trim();
 
     state.index = -1;
+    // Empty input shows the full catalog for this engine (now that the engine is
+    // fixed, this is a usable dropdown of valid types). Typed input is matched
+    // with a tight threshold so only relevant types surface (no more "todo").
     state.hints = isEmpty(newValue)
-      ? []
+      ? hints
       : new Fues(hints, {
           keys: ['name'],
+          threshold: 0.3,
+          ignoreLocation: true,
         })
           .search(newValue)
           .map(result => result.item);
@@ -83,7 +94,7 @@ const ColumnDataType: FC<ColumnDataTypeProps> = (props, ctx) => {
         value: hint.name,
       })
     );
-    setHints('');
+    clearHints();
   };
 
   const handleArrowUp = (event: KeyboardEvent) => {
@@ -175,64 +186,75 @@ const ColumnDataType: FC<ColumnDataTypeProps> = (props, ctx) => {
     const { store } = app.value;
     const { settings } = store.state;
 
+    // Show the catalog immediately when entering edit mode.
+    props.edit && setHints(props.value);
+
     addUnsubscribe(
       watch(props).subscribe(propName => {
         if (propName !== 'edit') return;
-        !props.edit && setHints('');
+        props.edit ? setHints(props.value) : clearHints();
       }),
       watch(settings).subscribe(propName => {
         if (propName !== 'database') return;
-        setHints(props.value);
+        props.edit ? setHints(props.value) : clearHints();
       })
     );
   });
 
-  return () => html`
-    <div
-      class=${styles.root}
-      ${ref(root)}
-      tabindex="-1"
-      @focus=${handleFocus}
-      @focusin=${handleFocus}
-      @focusout=${handleFocusout}
-    >
-      <${EditInput}
-        placeholder="dataType"
-        width=${props.width}
-        value=${props.value}
-        focus=${props.focus}
-        edit=${props.edit}
-        autofocus=${true}
-        .onInput=${handleInput}
-        .onKeydown=${handleKeydown}
-      />
-      ${props.edit
-        ? html`
-            <div class=${styles.hint}>
-              ${repeat(
-                state.hints,
-                hint => hint.name,
-                (hint, index) => html`
-                  <div
-                    class=${[
-                      styles.hintItem,
-                      { selected: index === state.index },
-                    ]}
-                    @click=${() => handleSelectHint(index)}
-                  >
-                    <${HighlightedText}
-                      searchWords=${[props.value]}
-                      textToHighlight=${hint.name}
-                    />
-                    <${Kbd} mini=${true} shortcut="Tab" />
-                  </div>
-                `
-              )}
-            </div>
-          `
-        : null}
-    </div>
-  `;
+  return () => {
+    const { settings } = app.value.store.state;
+    const invalid = !isKnownDataType(props.value, settings.database);
+
+    return html`
+      <div
+        class=${[styles.root, invalid ? styles.invalid : '']}
+        title=${invalid
+          ? 'Tipo no reconocido para este motor de base de datos'
+          : ''}
+        ${ref(root)}
+        tabindex="-1"
+        @focus=${handleFocus}
+        @focusin=${handleFocus}
+        @focusout=${handleFocusout}
+      >
+        <${EditInput}
+          placeholder="dataType"
+          width=${props.width}
+          value=${props.value}
+          focus=${props.focus}
+          edit=${props.edit}
+          autofocus=${true}
+          .onInput=${handleInput}
+          .onKeydown=${handleKeydown}
+        />
+        ${props.edit
+          ? html`
+              <div class=${styles.hint}>
+                ${repeat(
+                  state.hints,
+                  hint => hint.name,
+                  (hint, index) => html`
+                    <div
+                      class=${[
+                        styles.hintItem,
+                        { selected: index === state.index },
+                      ]}
+                      @click=${() => handleSelectHint(index)}
+                    >
+                      <${HighlightedText}
+                        searchWords=${[props.value]}
+                        textToHighlight=${hint.name}
+                      />
+                      <${Kbd} mini=${true} shortcut="Tab" />
+                    </div>
+                  `
+                )}
+              </div>
+            `
+          : null}
+      </div>
+    `;
+  };
 };
 
 export default ColumnDataType;

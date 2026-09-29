@@ -153,6 +153,14 @@ export function useErdEditorAttachElement({ props, ctx, app, root }: Props) {
             })
           );
         },
+        duplicateToEngine: ({ payload }) => {
+          ctx.dispatchEvent(
+            new CustomEvent('duplicateToEngine', {
+              detail: { database: payload.database, value: payload.value },
+              bubbles: true,
+            })
+          );
+        },
       })
     );
   });

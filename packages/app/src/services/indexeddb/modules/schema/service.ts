@@ -13,6 +13,7 @@ import {
   SchemaEntity,
   updateSchemaEntity,
 } from '@/services/indexeddb/modules/schema';
+import { DatabaseVendor } from '@/utils/api';
 import { toWidth } from '@/utils/text';
 
 export class SchemaService {
@@ -35,7 +36,13 @@ export class SchemaService {
     this.cache.set(entity.id, { ...entity, store });
   }
 
-  async add(projectId: string, entityValue: Pick<SchemaEntity, 'name'>) {
+  async add(
+    projectId: string,
+    entityValue: Pick<SchemaEntity, 'name'> & {
+      database: DatabaseVendor;
+      value?: string;
+    }
+  ) {
     const result = await addSchemaEntity(this.db, projectId, entityValue);
 
     this.createCache(result);

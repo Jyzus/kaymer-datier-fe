@@ -22,13 +22,13 @@ COPY packages/vscode-webview/package.json ./packages/vscode-webview/
 COPY packages/server/package.json ./packages/server/
 
 # Install workspace dependencies
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
 # Copy source code of all packages
 COPY packages ./packages
 
 # Recreate symlinks in package-level node_modules directories
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
 # Run full monorepo build (includes frontend assets compiling and server typescript compilation)
 RUN pnpm build

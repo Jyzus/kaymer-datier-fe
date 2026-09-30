@@ -3,11 +3,11 @@ FROM node:20-slim AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json nx.json tsconfig.app.json ./
+COPY .npmrc* pnpm-lock.yaml pnpm-workspace.yaml package.json nx.json tsconfig.app.json ./
 COPY packages ./packages
 
-# Install workspace dependencies
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+# Install workspace dependencies without attempting to download internal peers from registry
+RUN pnpm install --no-frozen-lockfile --ignore-scripts --no-auto-install-peers
 
 # Run full monorepo build (includes frontend assets compiling and server typescript compilation)
 RUN pnpm build

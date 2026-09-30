@@ -7,7 +7,7 @@ COPY .npmrc* pnpm-lock.yaml pnpm-workspace.yaml package.json nx.json tsconfig.ap
 COPY packages ./packages
 
 # Install workspace dependencies without attempting to download internal peers from registry
-RUN pnpm install --no-frozen-lockfile --ignore-scripts --no-auto-install-peers
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
 # Run full monorepo build (includes frontend assets compiling and server typescript compilation)
 RUN pnpm build

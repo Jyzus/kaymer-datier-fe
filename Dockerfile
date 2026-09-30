@@ -1,13 +1,14 @@
 # Stage 1: Build packages
 FROM node:20-slim AS builder
 WORKDIR /app
+ENV NODE_ENV=development
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY .npmrc* pnpm-lock.yaml pnpm-workspace.yaml package.json nx.json tsconfig.app.json ./
 COPY packages ./packages
 
-# Install workspace dependencies without attempting to download internal peers from registry
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+# Install all workspace dependencies including devDependencies for build
+RUN pnpm install --no-frozen-lockfile --ignore-scripts --prod=false
 
 # Run full monorepo build (includes frontend assets compiling and server typescript compilation)
 RUN pnpm build

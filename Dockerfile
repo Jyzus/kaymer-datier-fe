@@ -40,14 +40,17 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Copy workspace setup and built code
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY --from=builder /app/packages/shared ./packages/shared
+COPY --from=builder /app/packages/schema-sql-parser ./packages/schema-sql-parser
+COPY --from=builder /app/packages/erd-editor-schema ./packages/erd-editor-schema
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
 COPY --from=builder /app/packages/server/package.json ./packages/server/package.json
 COPY --from=builder /app/packages/server/drizzle.config.ts ./packages/server/drizzle.config.ts
 COPY --from=builder /app/packages/server/drizzle ./packages/server/drizzle
 COPY --from=builder /app/packages/app/dist ./packages/app/dist
 
-# Install production dependencies for the server package only
-RUN pnpm install --prod --ignore-scripts --no-frozen-lockfile --filter @dineug/erd-editor-server
+# Install production dependencies for the server and its internal dependencies
+RUN pnpm install --prod --ignore-scripts --no-frozen-lockfile --filter @dineug/erd-editor-server...
 
 # Standard production environment configurations
 ENV PORT=3000

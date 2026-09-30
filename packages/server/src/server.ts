@@ -9,7 +9,9 @@ import { fileURLToPath } from 'url';
 
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
+import { authMiddleware } from './middleware/auth.js';
 import { getAiClient } from './services/ai.js';
+import { schemaJsonToSql, sqlToSchemaJson } from './services/sqlConverter.js';
 
 dotenv.config();
 
@@ -21,6 +23,9 @@ const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Support larger diagram schema JSON sizes
+
+// Authentication middleware for /api routes
+app.use('/api', authMiddleware);
 
 // API Routes
 
@@ -150,6 +155,57 @@ app.post('/api/projects/:projectId/schemas', async (req, res) => {
   }
 });
 
+// POST /api/projects/:projectId/schemas/from-sql - Create a new schema directly from DDL SQL
+app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { name, sql, dialect } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: 'Schema name is required' });
+    }
+    if (!sql || typeof sql !== 'string' || sql.trim() === '') {
+      return res.status(400).json({ error: 'SQL DDL content is required' });
+    }
+
+    // Verify project exists
+    const proj = await db
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId));
+    if (proj.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Convert SQL DDL to ERD Schema v3 JSON
+    const schemaValueJson = sqlToSchemaJson(sql, { dialect });
+
+    const id = crypto.randomUUID();
+    const now = new Date();
+    const newSchema = {
+      id,
+      projectId,
+      name: name.trim(),
+      value: schemaValueJson,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.insert(schema.schemas).values(newSchema);
+
+    // Update parent project's updatedAt timestamp
+    await db
+      .update(schema.projects)
+      .set({ updatedAt: now })
+      .where(eq(schema.projects.id, projectId));
+
+    res.status(201).json(newSchema);
+  } catch (error: any) {
+    console.error('Error creating schema from SQL:', error);
+    res.status(500).json({ error: error?.message || 'Internal server error' });
+  }
+});
+
 // GET /api/schemas/:id - Fetch full schema detail including diagram 'value' JSON state
 app.get('/api/schemas/:id', async (req, res) => {
   try {
@@ -198,6 +254,98 @@ app.put('/api/schemas/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating schema:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/schemas/:id/sql - Export clean DDL SQL from diagram
+app.get('/api/schemas/:id/sql', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const dialect = req.query.dialect as string | undefined;
+    const format = req.query.format as string | undefined;
+
+    const result = await db
+      .select()
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, id));
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
+
+    const currentSchema = result[0];
+    const generatedSql = schemaJsonToSql(currentSchema.value, dialect);
+
+    if (format === 'raw' || req.headers.accept?.includes('text/plain')) {
+      return res.type('text/plain').send(generatedSql);
+    }
+
+    res.json({
+      id: currentSchema.id,
+      projectId: currentSchema.projectId,
+      name: currentSchema.name,
+      dialect: dialect || 'postgresql',
+      sql: generatedSql,
+    });
+  } catch (error: any) {
+    console.error('Error exporting schema to SQL:', error);
+    res.status(500).json({ error: error?.message || 'Internal server error' });
+  }
+});
+
+// PUT /api/schemas/:id/sql - Update and merge DDL SQL into diagram preserving table UI coordinates
+app.put('/api/schemas/:id/sql', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sql, dialect } = req.body;
+
+    if (!sql || typeof sql !== 'string' || sql.trim() === '') {
+      return res.status(400).json({ error: 'SQL content is required' });
+    }
+
+    const result = await db
+      .select()
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, id));
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
+
+    const currentSchema = result[0];
+
+    // Merge DDL and preserve existing table UI coordinates
+    const mergedJson = sqlToSchemaJson(sql, {
+      existingSchemaJson: currentSchema.value,
+      dialect,
+    });
+
+    const now = new Date();
+    await db
+      .update(schema.schemas)
+      .set({
+        value: mergedJson,
+        updatedAt: now,
+      })
+      .where(eq(schema.schemas.id, id));
+
+    // Update parent project's updatedAt
+    await db
+      .update(schema.projects)
+      .set({ updatedAt: now })
+      .where(eq(schema.projects.id, currentSchema.projectId));
+
+    const finalSql = schemaJsonToSql(mergedJson, dialect);
+
+    res.json({
+      success: true,
+      id: currentSchema.id,
+      name: currentSchema.name,
+      sql: finalSql,
+    });
+  } catch (error: any) {
+    console.error('Error updating schema with SQL:', error);
+    res.status(500).json({ error: error?.message || 'Internal server error' });
   }
 });
 

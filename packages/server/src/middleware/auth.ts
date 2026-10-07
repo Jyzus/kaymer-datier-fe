@@ -2,11 +2,15 @@ import { NextFunction, Request, Response } from 'express';
 
 import { AuthContext, verifyTokenOrApiKey } from '../services/auth.js';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: AuthContext;
+/* eslint-disable @typescript-eslint/no-namespace */
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthContext;
+    }
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace */
 
 /**
  * Authentication middleware that verifies:

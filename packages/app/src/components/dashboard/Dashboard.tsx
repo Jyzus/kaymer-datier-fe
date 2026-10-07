@@ -1,16 +1,20 @@
 import {
   CalendarIcon,
+  ExclamationTriangleIcon,
   Pencil1Icon,
   PlusIcon,
   TrashIcon,
 } from '@radix-ui/react-icons';
 import {
+  Badge,
   Button,
+  Callout,
   Card,
   Dialog,
   Flex,
   Grid,
   Heading,
+  Table,
   Text,
   TextField,
 } from '@radix-ui/themes';
@@ -25,6 +29,7 @@ import {
   useUpdateProject,
   useUpdateProjects,
 } from '@/atoms/modules/project';
+import { api, ApiKeyItem, getCurrentUser } from '@/utils/api';
 
 import * as styles from './Dashboard.styles';
 
@@ -37,6 +42,9 @@ const Dashboard: React.FC = () => {
   const deleteProject = useDeleteProject();
   const setSelectedProjectId = useSetSelectedProjectId();
 
+  // Current User
+  const currentUser = getCurrentUser();
+
   // Create Project Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -47,6 +55,58 @@ const Dashboard: React.FC = () => {
   const [editingId, setEditingId] = useState('');
   const [editProjectName, setEditProjectName] = useState('');
   const [editProjectDesc, setEditProjectDesc] = useState('');
+
+  // API Keys Modal State
+  const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
+  const handleOpenApiKeys = async () => {
+    setIsApiKeyOpen(true);
+    setCreatedKey(null);
+    setApiKeyError(null);
+    try {
+      setApiKeyLoading(true);
+      const res = await api.getApiKeys();
+      setApiKeys(res.keys || []);
+    } catch (err: any) {
+      setApiKeyError(err.message || 'Error al cargar API keys');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleCreateApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newKeyName.trim()) return;
+    try {
+      setApiKeyLoading(true);
+      const res = await api.createApiKey(newKeyName.trim(), 'subscription');
+      setCreatedKey(res.api_key);
+      setNewKeyName('');
+      const list = await api.getApiKeys();
+      setApiKeys(list.keys || []);
+    } catch (err: any) {
+      alert(err.message || 'Error creando API key');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (id: string) => {
+    if (confirm('¿Revocar esta API key permanentemente?')) {
+      try {
+        await api.revokeApiKey(id);
+        const list = await api.getApiKeys();
+        setApiKeys(list.keys || []);
+      } catch (err: any) {
+        alert(err.message || 'Error revocando API key');
+      }
+    }
+  };
 
   useEffect(() => {
     updateProjects();
@@ -148,59 +208,209 @@ const Dashboard: React.FC = () => {
           </Text>
         </Flex>
 
-        <Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <Dialog.Trigger>
-            <Button size="3" variant="solid">
-              <PlusIcon width="16" height="16" /> Nuevo Proyecto
-            </Button>
-          </Dialog.Trigger>
-          <Dialog.Content style={{ maxWidth: 450 }}>
-            <Dialog.Title>Nuevo Proyecto</Dialog.Title>
-            <Dialog.Description size="2" mb="4">
-              Crea un nuevo proyecto para agrupar múltiples esquemas de bases de
-              datos.
-            </Dialog.Description>
+        <Flex align="center" gap="3">
+          {/* API Keys Dialog */}
+          <Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
+            <Dialog.Trigger>
+              <Button
+                size="3"
+                variant="soft"
+                color="gray"
+                onClick={handleOpenApiKeys}
+              >
+                API Keys
+              </Button>
+            </Dialog.Trigger>
+            <Dialog.Content style={{ maxWidth: 600 }}>
+              <Dialog.Title>Gestión de API Keys (M2M)</Dialog.Title>
+              <Dialog.Description size="2" mb="4">
+                Administra tus claves de acceso para conectar Planifier Docs,
+                workers y herramientas externas.
+              </Dialog.Description>
 
-            <form onSubmit={handleCreateProject}>
-              <Flex direction="column" gap="3">
-                <label>
-                  <Text as="div" size="2" mb="1" weight="bold">
-                    Nombre del Proyecto
-                  </Text>
-                  <TextField.Input
-                    required
-                    placeholder="Ej. Proyecto A"
-                    value={newProjectName}
-                    onChange={e =>
-                      setNewProjectName((e.target as HTMLInputElement).value)
-                    }
-                  />
-                </label>
-                <label>
-                  <Text as="div" size="2" mb="1" weight="bold">
-                    Descripción (opcional)
-                  </Text>
-                  <TextField.Input
-                    placeholder="Ej. Sistema de autenticación y ventas"
-                    value={newProjectDesc}
-                    onChange={e =>
-                      setNewProjectDesc((e.target as HTMLInputElement).value)
-                    }
-                  />
-                </label>
-              </Flex>
+              {apiKeyError && (
+                <Callout.Root color="red" mb="3" size="1">
+                  <Callout.Icon>
+                    <ExclamationTriangleIcon />
+                  </Callout.Icon>
+                  <Callout.Text>{apiKeyError}</Callout.Text>
+                </Callout.Root>
+              )}
 
-              <Flex gap="3" mt="4" justify="end">
+              {createdKey && (
+                <Callout.Root color="green" mb="3">
+                  <Callout.Text>
+                    <strong>¡Nueva API Key generada con éxito!</strong>
+                    <br />
+                    Guárdala ahora. Por seguridad, no se volverá a mostrar en
+                    claro:
+                    <br />
+                    <code
+                      style={{
+                        userSelect: 'all',
+                        wordBreak: 'break-all',
+                        display: 'block',
+                        marginTop: 6,
+                        padding: '4px 8px',
+                        background: 'var(--green-3)',
+                        borderRadius: 4,
+                      }}
+                    >
+                      {createdKey}
+                    </code>
+                  </Callout.Text>
+                </Callout.Root>
+              )}
+
+              <form onSubmit={handleCreateApiKey} style={{ marginBottom: 16 }}>
+                <Flex gap="2">
+                  <TextField.Input
+                    placeholder="Nombre de la clave (ej. Planifier Integration)"
+                    value={newKeyName}
+                    onChange={e => setNewKeyName(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={apiKeyLoading || !newKeyName.trim()}
+                  >
+                    Generar Clave
+                  </Button>
+                </Flex>
+              </form>
+
+              <Text size="2" weight="bold" mb="2" as="div">
+                Claves Activas
+              </Text>
+
+              {apiKeys.length === 0 ? (
+                <Text size="2" color="gray">
+                  No tienes API keys generadas.
+                </Text>
+              ) : (
+                <Table.Root size="1">
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeaderCell>Nombre</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>Prefijo</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>Ámbito</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>Acciones</Table.ColumnHeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {apiKeys.map(k => (
+                      <Table.Row key={k.id}>
+                        <Table.Cell>{k.name}</Table.Cell>
+                        <Table.Cell>
+                          <Badge color="gray">{k.key_prefix}...</Badge>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Badge color="blue">{k.scope_type}</Badge>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Button
+                            size="1"
+                            variant="ghost"
+                            color="red"
+                            type="button"
+                            onClick={() => handleRevokeApiKey(k.id)}
+                          >
+                            Revocar
+                          </Button>
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table.Root>
+              )}
+
+              <Flex justify="end" mt="4">
                 <Dialog.Close>
                   <Button variant="soft" color="gray" type="button">
-                    Cancelar
+                    Cerrar
                   </Button>
                 </Dialog.Close>
-                <Button type="submit">Crear Proyecto</Button>
               </Flex>
-            </form>
-          </Dialog.Content>
-        </Dialog.Root>
+            </Dialog.Content>
+          </Dialog.Root>
+
+          {/* Nuevo Proyecto Dialog */}
+          <Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <Dialog.Trigger>
+              <Button size="3" variant="solid">
+                <PlusIcon width="16" height="16" /> Nuevo Proyecto
+              </Button>
+            </Dialog.Trigger>
+            <Dialog.Content style={{ maxWidth: 450 }}>
+              <Dialog.Title>Nuevo Proyecto</Dialog.Title>
+              <Dialog.Description size="2" mb="4">
+                Crea un nuevo proyecto para agrupar múltiples esquemas de bases
+                de datos.
+              </Dialog.Description>
+
+              <form onSubmit={handleCreateProject}>
+                <Flex direction="column" gap="3">
+                  <label>
+                    <Text as="div" size="2" mb="1" weight="bold">
+                      Nombre del Proyecto
+                    </Text>
+                    <TextField.Input
+                      required
+                      placeholder="Ej. Proyecto A"
+                      value={newProjectName}
+                      onChange={e =>
+                        setNewProjectName((e.target as HTMLInputElement).value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    <Text as="div" size="2" mb="1" weight="bold">
+                      Descripción (opcional)
+                    </Text>
+                    <TextField.Input
+                      placeholder="Ej. Sistema de autenticación y ventas"
+                      value={newProjectDesc}
+                      onChange={e =>
+                        setNewProjectDesc((e.target as HTMLInputElement).value)
+                      }
+                    />
+                  </label>
+                </Flex>
+
+                <Flex gap="3" mt="4" justify="end">
+                  <Dialog.Close>
+                    <Button variant="soft" color="gray" type="button">
+                      Cancelar
+                    </Button>
+                  </Dialog.Close>
+                  <Button type="submit">Crear Proyecto</Button>
+                </Flex>
+              </form>
+            </Dialog.Content>
+          </Dialog.Root>
+
+          {/* User Profile & Logout */}
+          <Flex
+            align="center"
+            gap="2"
+            style={{
+              borderLeft: '1px solid var(--gray-6)',
+              paddingLeft: '12px',
+            }}
+          >
+            <Text size="2" color="gray" weight="medium">
+              {currentUser?.first_name || currentUser?.email || 'Usuario'}
+            </Text>
+            <Button
+              size="2"
+              variant="ghost"
+              color="red"
+              onClick={() => api.logout()}
+            >
+              Salir
+            </Button>
+          </Flex>
+        </Flex>
       </div>
 
       {/* Grid of projects */}

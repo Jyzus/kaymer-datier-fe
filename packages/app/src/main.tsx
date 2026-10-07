@@ -15,6 +15,8 @@ import App from '@/components/app/App';
 import Dashboard from '@/components/dashboard/Dashboard';
 import LiveCollaborativeError from '@/components/live-collaborative/live-collaborative-error/LiveCollaborativeError';
 import { registerSW } from '@/registerSW';
+import { AuthGuard } from '@/routes/auth/AuthGuard';
+import LoginPage from '@/routes/auth/Login';
 import Root from '@/routes/root/Root';
 import { store } from '@/store';
 
@@ -33,22 +35,31 @@ const router = createBrowserRouter([
     errorElement: <LiveCollaborativeError />,
     children: [
       {
-        index: true,
-        element: <Dashboard />,
+        path: 'login',
+        element: <LoginPage />,
       },
       {
-        path: 'project/:projectId',
-        element: <App />,
-      },
-      {
-        path: 'live',
-        lazy: async () => {
-          const { default: Component } = await import(
-            '@/components/live-collaborative/LiveCollaborative'
-          );
-          return { Component };
-        },
-        errorElement: <LiveCollaborativeError />,
+        element: <AuthGuard />,
+        children: [
+          {
+            index: true,
+            element: <Dashboard />,
+          },
+          {
+            path: 'project/:projectId',
+            element: <App />,
+          },
+          {
+            path: 'live',
+            lazy: async () => {
+              const { default: Component } = await import(
+                '@/components/live-collaborative/LiveCollaborative'
+              );
+              return { Component };
+            },
+            errorElement: <LiveCollaborativeError />,
+          },
+        ],
       },
     ],
   },

@@ -1,50 +1,55 @@
 import { NextFunction, Request, Response } from 'express';
 
-/**
- * Authentication middleware that validates Bearer token against DATIER_API_KEY.
- * - When DATIER_API_KEY is configured in environment, requests must provide:
- *   - 'Authorization: Bearer <DATIER_API_KEY>' or
- *   - 'X-API-KEY: <DATIER_API_KEY>'
- * - Same-origin requests from the browser web frontend are permitted so the visual UI is preserved.
- * - When DATIER_API_KEY is not configured, API operates in development/open mode.
- */
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const configuredApiKey = process.env.DATIER_API_KEY;
+import { AuthContext, verifyTokenOrApiKey } from '../services/auth.js';
 
-  if (!configuredApiKey) {
-    return next();
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: AuthContext;
   }
+}
 
-  // 1. Check Authorization: Bearer <token>
+/**
+ * Authentication middleware that verifies:
+ * 1. Bearer JWT tokens via Ed25519 JWKS against ms-auth (Perfil 1)
+ * 2. M2M API Keys (msa_live_...) via RFC 7662 introspection against ms-auth (Perfil 2)
+ * 3. Legacy DATIER_API_KEY for backward compatibility during transition
+ *
+ * Populates req.user with { userId, tenantId, isApiKey, permissions }.
+ */
+export const authMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  let token: string | null = null;
+
+  // 1. Authorization: Bearer <token>
   const authHeader = req.headers.authorization;
   if (authHeader) {
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (match && match[1].trim() === configuredApiKey) {
-      return next();
+    if (match) {
+      token = match[1].trim();
     }
-    return res.status(401).json({ error: 'Unauthorized: Invalid Bearer token' });
   }
 
-  // 2. Check X-API-KEY: <token>
-  const xApiKey = req.headers['x-api-key'];
-  if (typeof xApiKey === 'string' && xApiKey.trim() === configuredApiKey) {
+  // 2. X-API-KEY: <token>
+  if (!token && typeof req.headers['x-api-key'] === 'string') {
+    token = req.headers['x-api-key'].trim();
+  }
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'Unauthorized: Missing Authorization Bearer token or X-API-KEY',
+    });
+  }
+
+  try {
+    const authContext = await verifyTokenOrApiKey(token);
+    req.user = authContext;
     return next();
+  } catch (error: any) {
+    return res.status(401).json({
+      error: `Unauthorized: ${error.message || 'Invalid credentials'}`,
+    });
   }
-
-  // 3. Allow same-origin browser requests (frontend UI)
-  const secFetchSite = req.headers['sec-fetch-site'];
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-
-  if (secFetchSite === 'same-origin') {
-    return next();
-  }
-
-  if (origin && host && origin.includes(host)) {
-    return next();
-  }
-
-  return res.status(401).json({
-    error: 'Unauthorized: Missing or invalid Bearer token / API key',
-  });
 };

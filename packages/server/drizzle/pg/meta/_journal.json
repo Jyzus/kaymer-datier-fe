@@ -15,6 +15,13 @@
       "when": 1783907622154,
       "tag": "0001_careful_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791403856661,
+      "tag": "0002_nebulous_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

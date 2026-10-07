@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import {
   ERDEditorSchemaV3,
   query,
@@ -11,6 +10,7 @@ import {
   SortType,
   StatementType,
 } from '@dineug/schema-sql-parser';
+import crypto from 'crypto';
 
 const {
   Database,
@@ -131,12 +131,20 @@ function getStatementMap(statements: any[]): StatementMap {
         }
         break;
       case StatementType.createIndex:
-        if (statement.tableName && statement.columns && statement.columns.length) {
+        if (
+          statement.tableName &&
+          statement.columns &&
+          statement.columns.length
+        ) {
           map.indexes.push(statement);
         }
         break;
       case StatementType.alterTableAddPrimaryKey:
-        if (statement.name && statement.columnNames && statement.columnNames.length) {
+        if (
+          statement.name &&
+          statement.columnNames &&
+          statement.columnNames.length
+        ) {
           map.primaryKeys.push(statement);
         }
         break;
@@ -153,7 +161,11 @@ function getStatementMap(statements: any[]): StatementMap {
         }
         break;
       case StatementType.alterTableAddUnique:
-        if (statement.name && statement.columnNames && statement.columnNames.length) {
+        if (
+          statement.name &&
+          statement.columnNames &&
+          statement.columnNames.length
+        ) {
           map.uniques.push(statement);
         }
         break;
@@ -170,7 +182,10 @@ function mergeTables({
   foreignKeys,
   uniques,
 }: StatementMap): ParsedTable[] {
-  const findByName = <T extends { name: string }>(list: T[], name: string): T | undefined =>
+  const findByName = <T extends { name: string }>(
+    list: T[],
+    name: string
+  ): T | undefined =>
     list.find(item => item.name.toLowerCase() === name.toLowerCase());
 
   indexes.forEach((index: any) => {
@@ -298,7 +313,10 @@ export function getCreateTableName(statement: string): string | null {
     /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)/i
   );
   if (!match) return null;
-  return match[1].replace(/["'`\[\]]/g, '').trim().toLowerCase();
+  return match[1]
+    .replace(/["'`\[\]]/g, '')
+    .trim()
+    .toLowerCase();
 }
 
 export function mergeDDL(currentSql: string, newSql: string): string {
@@ -338,7 +356,10 @@ export interface ConvertSqlOptions {
  * Converts SQL DDL to ERD Editor Schema v3 JSON.
  * Preserves table positions, colors, and layout from existingSchemaJson if provided.
  */
-export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): string {
+export function sqlToSchemaJson(
+  sql: string,
+  options?: ConvertSqlOptions
+): string {
   const targetDialect = options?.dialect?.toLowerCase() || 'postgresql';
   const targetDb = DialectMap[targetDialect] || Database.PostgreSQL;
 
@@ -348,7 +369,9 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
 
   if (options?.existingSchemaJson && options.existingSchemaJson.trim() !== '') {
     try {
-      const existingSchema = schemaV3Parser(JSON.parse(options.existingSchemaJson));
+      const existingSchema = schemaV3Parser(
+        JSON.parse(options.existingSchemaJson)
+      );
       baseSchemaSettings = existingSchema.settings;
 
       const existingTables = query(existingSchema.collections)
@@ -366,19 +389,26 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
         }
       });
 
-      const currentSql = schemaJsonToSql(options.existingSchemaJson, targetDialect);
+      const currentSql = schemaJsonToSql(
+        options.existingSchemaJson,
+        targetDialect
+      );
       if (currentSql.trim() !== '') {
         effectiveSql = mergeDDL(currentSql, sql);
       }
     } catch (err) {
-      console.warn('Failed to parse existing schema JSON for position preservation:', err);
+      console.warn(
+        'Failed to parse existing schema JSON for position preservation:',
+        err
+      );
     }
   }
 
   const schema = schemaV3Parser({});
   schema.settings.database = targetDb;
   if (baseSchemaSettings) {
-    schema.settings.bracketType = baseSchemaSettings.bracketType ?? schema.settings.bracketType;
+    schema.settings.bracketType =
+      baseSchemaSettings.bracketType ?? schema.settings.bracketType;
   }
 
   const statements = schemaSQLParser(effectiveSql);
@@ -467,7 +497,9 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
 
       newTable.columnIds.push(columnId);
       newTable.seqColumnIds.push(columnId);
-      query(schema.collections).collection('tableColumnEntities').setOne(newColumn);
+      query(schema.collections)
+        .collection('tableColumnEntities')
+        .setOne(newColumn);
     });
 
     schema.doc.tableIds.push(tableId);
@@ -475,20 +507,27 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
   });
 
   // Convert relationships (Foreign Keys)
-  const allTables = query(schema.collections).collection('tableEntities').selectByIds(schema.doc.tableIds);
-  const columnCollection = query(schema.collections).collection('tableColumnEntities');
+  const allTables = query(schema.collections)
+    .collection('tableEntities')
+    .selectByIds(schema.doc.tableIds);
+  const columnCollection = query(schema.collections).collection(
+    'tableColumnEntities'
+  );
 
   tables.forEach(table => {
     if (!table.foreignKeys.length) return;
 
-    const endTable = allTables.find((t: any) => t.name.toLowerCase() === table.name.toLowerCase());
+    const endTable = allTables.find(
+      (t: any) => t.name.toLowerCase() === table.name.toLowerCase()
+    );
     if (!endTable) return;
 
     const endColumns = columnCollection.selectByIds(endTable.columnIds);
 
     table.foreignKeys.forEach((foreignKey: ParsedForeignKey) => {
       const startTable = allTables.find(
-        (t: any) => t.name.toLowerCase() === foreignKey.refTableName.toLowerCase()
+        (t: any) =>
+          t.name.toLowerCase() === foreignKey.refTableName.toLowerCase()
       );
       if (!startTable) return;
 
@@ -497,12 +536,16 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
       const matchedEndCols: any[] = [];
 
       foreignKey.refColumnNames.forEach((refName: string) => {
-        const col = startColumns.find((c: any) => c.name.toLowerCase() === refName.toLowerCase());
+        const col = startColumns.find(
+          (c: any) => c.name.toLowerCase() === refName.toLowerCase()
+        );
         if (col) matchedStartCols.push(col);
       });
 
       foreignKey.columnNames.forEach((colName: string) => {
-        const col = endColumns.find((c: any) => c.name.toLowerCase() === colName.toLowerCase());
+        const col = endColumns.find(
+          (c: any) => c.name.toLowerCase() === colName.toLowerCase()
+        );
         if (col) {
           matchedEndCols.push(col);
           if (bHas(col.ui.keys, ColumnUIKey.primaryKey)) {
@@ -513,7 +556,10 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
         }
       });
 
-      if (matchedStartCols.length > 0 && matchedEndCols.length === matchedStartCols.length) {
+      if (
+        matchedStartCols.length > 0 &&
+        matchedEndCols.length === matchedStartCols.length
+      ) {
         const relId = crypto.randomUUID();
         const newRel = {
           id: relId,
@@ -534,7 +580,9 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
         };
 
         schema.doc.relationshipIds.push(relId);
-        query(schema.collections).collection('relationshipEntities').setOne(newRel);
+        query(schema.collections)
+          .collection('relationshipEntities')
+          .setOne(newRel);
       }
     });
   });
@@ -543,7 +591,9 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
   tables.forEach(table => {
     if (!table.indexes || !table.indexes.length) return;
 
-    const targetTable = allTables.find((t: any) => t.name.toLowerCase() === table.name.toLowerCase());
+    const targetTable = allTables.find(
+      (t: any) => t.name.toLowerCase() === table.name.toLowerCase()
+    );
     if (!targetTable) return;
 
     const tableCols = columnCollection.selectByIds(targetTable.columnIds);
@@ -553,20 +603,25 @@ export function sqlToSchemaJson(sql: string, options?: ConvertSqlOptions): strin
       const indexColIds: string[] = [];
 
       index.columns.forEach((col: ParsedIndexCol) => {
-        const matchedCol = tableCols.find((c: any) => c.name.toLowerCase() === col.name.toLowerCase());
+        const matchedCol = tableCols.find(
+          (c: any) => c.name.toLowerCase() === col.name.toLowerCase()
+        );
         if (matchedCol) {
           const indexColId = crypto.randomUUID();
           const newIndexCol = {
             id: indexColId,
             indexId,
             columnId: matchedCol.id,
-            orderType: col.sort === SortType.desc ? OrderType.DESC : OrderType.ASC,
+            orderType:
+              col.sort === SortType.desc ? OrderType.DESC : OrderType.ASC,
             meta: {
               updateAt: Date.now(),
               createAt: Date.now(),
             },
           };
-          query(schema.collections).collection('indexColumnEntities').setOne(newIndexCol);
+          query(schema.collections)
+            .collection('indexColumnEntities')
+            .setOne(newIndexCol);
           indexColIds.push(indexColId);
         }
       });
@@ -610,14 +665,24 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
   }
 
   const { doc, collections, settings } = schema;
-  const targetDialect = dialect?.toLowerCase() || DatabaseToDialect[settings.database] || 'postgresql';
-  const bracket = targetDialect === 'mysql' || targetDialect === 'mariadb' ? '`' : targetDialect === 'sqlite' ? '"' : '';
+  const targetDialect =
+    dialect?.toLowerCase() ||
+    DatabaseToDialect[settings.database] ||
+    'postgresql';
+  const bracket =
+    targetDialect === 'mysql' || targetDialect === 'mariadb'
+      ? '`'
+      : targetDialect === 'sqlite'
+        ? '"'
+        : '';
 
   const tableCollection = query(collections).collection('tableEntities');
   const columnCollection = query(collections).collection('tableColumnEntities');
   const relCollection = query(collections).collection('relationshipEntities');
   const indexCollection = query(collections).collection('indexEntities');
-  const indexColCollection = query(collections).collection('indexColumnEntities');
+  const indexColCollection = query(collections).collection(
+    'indexColumnEntities'
+  );
 
   const tables = tableCollection
     .selectByIds(doc.tableIds)
@@ -631,12 +696,17 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
     if (columns.length === 0) return;
 
     const maxNameLen = Math.max(...columns.map((c: any) => c.name.length), 4);
-    const maxTypeLen = Math.max(...columns.map((c: any) => c.dataType.length), 4);
+    const maxTypeLen = Math.max(
+      ...columns.map((c: any) => c.dataType.length),
+      4
+    );
 
     const tableLines: string[] = [];
     tableLines.push(`CREATE TABLE ${bracket}${table.name}${bracket} (`);
 
-    const pkColumns = columns.filter((c: any) => bHas(c.options, ColumnOption.primaryKey));
+    const pkColumns = columns.filter((c: any) =>
+      bHas(c.options, ColumnOption.primaryKey)
+    );
 
     const colDefs = columns.map((c: any) => {
       const padName = c.name.padEnd(maxNameLen, ' ');
@@ -663,15 +733,27 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
         parts.push('UNIQUE');
       }
 
-      if (c.comment && c.comment.trim() !== '' && (targetDialect === 'mysql' || targetDialect === 'mariadb')) {
+      if (
+        c.comment &&
+        c.comment.trim() !== '' &&
+        (targetDialect === 'mysql' || targetDialect === 'mariadb')
+      ) {
         parts.push(`COMMENT '${c.comment.replace(/'/g, "''")}'`);
       }
 
       return parts.join(' ');
     });
 
-    if (pkColumns.length > 0 && !(targetDialect === 'sqlite' && pkColumns.some((c: any) => bHas(c.options, ColumnOption.autoIncrement)))) {
-      const pkNames = pkColumns.map((c: any) => `${bracket}${c.name}${bracket}`).join(', ');
+    if (
+      pkColumns.length > 0 &&
+      !(
+        targetDialect === 'sqlite' &&
+        pkColumns.some((c: any) => bHas(c.options, ColumnOption.autoIncrement))
+      )
+    ) {
+      const pkNames = pkColumns
+        .map((c: any) => `${bracket}${c.name}${bracket}`)
+        .join(', ');
       colDefs.push(`  PRIMARY KEY (${pkNames})`);
     }
 
@@ -682,11 +764,15 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
     // Comments for PostgreSQL
     if (targetDialect === 'postgresql') {
       if (table.comment && table.comment.trim() !== '') {
-        statements.push(`COMMENT ON TABLE ${table.name} IS '${table.comment.replace(/'/g, "''")}';`);
+        statements.push(
+          `COMMENT ON TABLE ${table.name} IS '${table.comment.replace(/'/g, "''")}';`
+        );
       }
       columns.forEach((c: any) => {
         if (c.comment && c.comment.trim() !== '') {
-          statements.push(`COMMENT ON COLUMN ${table.name}.${c.name} IS '${c.comment.replace(/'/g, "''")}';`);
+          statements.push(
+            `COMMENT ON COLUMN ${table.name}.${c.name} IS '${c.comment.replace(/'/g, "''")}';`
+          );
         }
       });
     }
@@ -701,14 +787,19 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
     const endTable = tableCollection.selectById(rel.end.tableId);
     if (!startTable || !endTable) return;
 
-    const startCols = columnCollection.selectByIds(rel.start.columnIds).map((c: any) => `${bracket}${c.name}${bracket}`);
-    const endCols = columnCollection.selectByIds(rel.end.columnIds).map((c: any) => `${bracket}${c.name}${bracket}`);
+    const startCols = columnCollection
+      .selectByIds(rel.start.columnIds)
+      .map((c: any) => `${bracket}${c.name}${bracket}`);
+    const endCols = columnCollection
+      .selectByIds(rel.end.columnIds)
+      .map((c: any) => `${bracket}${c.name}${bracket}`);
 
     if (startCols.length > 0 && endCols.length === startCols.length) {
       let fkName = `fk_${endTable.name}_${startTable.name}`.toLowerCase();
       let counter = 1;
       while (fkNamesSet.has(fkName)) {
-        fkName = `fk_${endTable.name}_${startTable.name}_${counter++}`.toLowerCase();
+        fkName =
+          `fk_${endTable.name}_${startTable.name}_${counter++}`.toLowerCase();
       }
       fkNamesSet.add(fkName);
 

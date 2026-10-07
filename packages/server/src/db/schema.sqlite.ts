@@ -2,6 +2,10 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id')
+    .notNull()
+    .default('00000000-0000-0000-0000-000000000001'),
+  userId: text('user_id'),
   name: text('name').notNull(),
   description: text('description'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),

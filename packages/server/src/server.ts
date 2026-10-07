@@ -1,7 +1,7 @@
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { authMiddleware } from './middleware/auth.js';
+import { authRouter } from './routes/auth.js';
 import { getAiClient } from './services/ai.js';
 import { schemaJsonToSql, sqlToSchemaJson } from './services/sqlConverter.js';
 
@@ -24,17 +25,60 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Support larger diagram schema JSON sizes
 
-// Authentication middleware for /api routes
+// Public authentication routes (proxied to ms-auth)
+app.use('/api/auth', authRouter);
+
+// Authentication middleware for protected /api routes
 app.use('/api', authMiddleware);
+
+// Helpers for multi-tenant isolation verification
+async function verifyProjectAccess(projectId: string, tenantId: string) {
+  const proj = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.tenantId, tenantId)
+      )
+    );
+  return proj.length > 0;
+}
+
+async function verifySchemaAccess(schemaId: string, tenantId: string) {
+  const result = await db
+    .select({
+      id: schema.schemas.id,
+      projectId: schema.schemas.projectId,
+      name: schema.schemas.name,
+      value: schema.schemas.value,
+      createdAt: schema.schemas.createdAt,
+      updatedAt: schema.schemas.updatedAt,
+    })
+    .from(schema.schemas)
+    .innerJoin(
+      schema.projects,
+      eq(schema.schemas.projectId, schema.projects.id)
+    )
+    .where(
+      and(
+        eq(schema.schemas.id, schemaId),
+        eq(schema.projects.tenantId, tenantId)
+      )
+    );
+  return result[0] || null;
+}
 
 // API Routes
 
-// GET /api/projects - List all projects
+// GET /api/projects - List all projects belonging to the active tenant
 app.get('/api/projects', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const list = await db
       .select()
       .from(schema.projects)
+      .where(eq(schema.projects.tenantId, tenantId))
       .orderBy(desc(schema.projects.updatedAt));
     res.json(list);
   } catch (error) {
@@ -43,9 +87,11 @@ app.get('/api/projects', async (req, res) => {
   }
 });
 
-// POST /api/projects - Create a new project
+// POST /api/projects - Create a new project within the active tenant
 app.post('/api/projects', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
+    const userId = req.user!.userId;
     const { name, description } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
@@ -54,6 +100,8 @@ app.post('/api/projects', async (req, res) => {
     const now = new Date();
     const newProject = {
       id,
+      tenantId,
+      userId: userId || null,
       name,
       description: description || null,
       createdAt: now,
@@ -67,11 +115,18 @@ app.post('/api/projects', async (req, res) => {
   }
 });
 
-// PUT /api/projects/:id - Update project name/description
+// PUT /api/projects/:id - Update project name/description (tenant-isolated)
 app.put('/api/projects/:id', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
     const { name, description } = req.body;
+
+    const hasAccess = await verifyProjectAccess(id, tenantId);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
     const updateValues: any = { updatedAt: new Date() };
     if (name !== undefined) updateValues.name = name;
     if (description !== undefined) updateValues.description = description;
@@ -79,15 +134,16 @@ app.put('/api/projects/:id', async (req, res) => {
     await db
       .update(schema.projects)
       .set(updateValues)
-      .where(eq(schema.projects.id, id));
+      .where(
+        and(eq(schema.projects.id, id), eq(schema.projects.tenantId, tenantId))
+      );
 
     const updated = await db
       .select()
       .from(schema.projects)
-      .where(eq(schema.projects.id, id));
-    if (updated.length === 0) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
+      .where(
+        and(eq(schema.projects.id, id), eq(schema.projects.tenantId, tenantId))
+      );
     res.json(updated[0]);
   } catch (error) {
     console.error('Error updating project:', error);
@@ -95,11 +151,22 @@ app.put('/api/projects/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:id - Delete project (cascades to schemas)
+// DELETE /api/projects/:id - Delete project (tenant-isolated, cascades to schemas)
 app.delete('/api/projects/:id', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
-    await db.delete(schema.projects).where(eq(schema.projects.id, id));
+
+    const hasAccess = await verifyProjectAccess(id, tenantId);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    await db
+      .delete(schema.projects)
+      .where(
+        and(eq(schema.projects.id, id), eq(schema.projects.tenantId, tenantId))
+      );
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting project:', error);
@@ -107,10 +174,17 @@ app.delete('/api/projects/:id', async (req, res) => {
   }
 });
 
-// GET /api/projects/:projectId/schemas - List schemas for a project (excludes full diagram state value)
+// GET /api/projects/:projectId/schemas - List schemas for a project (tenant-isolated)
 app.get('/api/projects/:projectId/schemas', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { projectId } = req.params;
+
+    const hasAccess = await verifyProjectAccess(projectId, tenantId);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
     const list = await db
       .select({
         id: schema.schemas.id,
@@ -129,14 +203,21 @@ app.get('/api/projects/:projectId/schemas', async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/schemas - Create a new schema in a project
+// POST /api/projects/:projectId/schemas - Create a new schema in a project (tenant-isolated)
 app.post('/api/projects/:projectId/schemas', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { projectId } = req.params;
     const { name } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
+
+    const hasAccess = await verifyProjectAccess(projectId, tenantId);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
     const id = crypto.randomUUID();
     const now = new Date();
     const newSchema = {
@@ -155,9 +236,10 @@ app.post('/api/projects/:projectId/schemas', async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/schemas/from-sql - Create a new schema directly from DDL SQL
+// POST /api/projects/:projectId/schemas/from-sql - Create a new schema directly from DDL SQL (tenant-isolated)
 app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { projectId } = req.params;
     const { name, sql, dialect } = req.body;
 
@@ -168,12 +250,8 @@ app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
       return res.status(400).json({ error: 'SQL DDL content is required' });
     }
 
-    // Verify project exists
-    const proj = await db
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(eq(schema.projects.id, projectId));
-    if (proj.length === 0) {
+    const hasAccess = await verifyProjectAccess(projectId, tenantId);
+    if (!hasAccess) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
@@ -197,7 +275,12 @@ app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
     await db
       .update(schema.projects)
       .set({ updatedAt: now })
-      .where(eq(schema.projects.id, projectId));
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.tenantId, tenantId)
+        )
+      );
 
     res.status(201).json(newSchema);
   } catch (error: any) {
@@ -206,29 +289,36 @@ app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
   }
 });
 
-// GET /api/schemas/:id - Fetch full schema detail including diagram 'value' JSON state
+// GET /api/schemas/:id - Fetch full schema detail including diagram 'value' JSON state (tenant-isolated)
 app.get('/api/schemas/:id', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
-    const result = await db
-      .select()
-      .from(schema.schemas)
-      .where(eq(schema.schemas.id, id));
-    if (result.length === 0) {
+
+    const currentSchema = await verifySchemaAccess(id, tenantId);
+    if (!currentSchema) {
       return res.status(404).json({ error: 'Schema not found' });
     }
-    res.json(result[0]);
+
+    res.json(currentSchema);
   } catch (error) {
     console.error('Error retrieving schema:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// PUT /api/schemas/:id - Save schema name or diagram 'value'
+// PUT /api/schemas/:id - Save schema name or diagram 'value' (tenant-isolated)
 app.put('/api/schemas/:id', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
     const { name, value } = req.body;
+
+    const currentSchema = await verifySchemaAccess(id, tenantId);
+    if (!currentSchema) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
+
     const updateValues: any = { updatedAt: new Date() };
     if (name !== undefined) updateValues.name = name;
     if (value !== undefined) updateValues.value = value;
@@ -238,17 +328,16 @@ app.put('/api/schemas/:id', async (req, res) => {
       .set(updateValues)
       .where(eq(schema.schemas.id, id));
 
-    // Also update parent project's updatedAt time so project list sorts properly
-    const schemaDetails = await db
-      .select({ projectId: schema.schemas.projectId })
-      .from(schema.schemas)
-      .where(eq(schema.schemas.id, id));
-    if (schemaDetails.length > 0) {
-      await db
-        .update(schema.projects)
-        .set({ updatedAt: new Date() })
-        .where(eq(schema.projects.id, schemaDetails[0].projectId));
-    }
+    // Update parent project's updatedAt
+    await db
+      .update(schema.projects)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.projects.id, currentSchema.projectId),
+          eq(schema.projects.tenantId, tenantId)
+        )
+      );
 
     res.json({ success: true });
   } catch (error) {
@@ -257,23 +346,19 @@ app.put('/api/schemas/:id', async (req, res) => {
   }
 });
 
-// GET /api/schemas/:id/sql - Export clean DDL SQL from diagram
+// GET /api/schemas/:id/sql - Export clean DDL SQL from diagram (tenant-isolated)
 app.get('/api/schemas/:id/sql', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
     const dialect = req.query.dialect as string | undefined;
     const format = req.query.format as string | undefined;
 
-    const result = await db
-      .select()
-      .from(schema.schemas)
-      .where(eq(schema.schemas.id, id));
-
-    if (result.length === 0) {
+    const currentSchema = await verifySchemaAccess(id, tenantId);
+    if (!currentSchema) {
       return res.status(404).json({ error: 'Schema not found' });
     }
 
-    const currentSchema = result[0];
     const generatedSql = schemaJsonToSql(currentSchema.value, dialect);
 
     if (format === 'raw' || req.headers.accept?.includes('text/plain')) {
@@ -293,9 +378,10 @@ app.get('/api/schemas/:id/sql', async (req, res) => {
   }
 });
 
-// PUT /api/schemas/:id/sql - Update and merge DDL SQL into diagram preserving table UI coordinates
+// PUT /api/schemas/:id/sql - Update and merge DDL SQL into diagram preserving table UI coordinates (tenant-isolated)
 app.put('/api/schemas/:id/sql', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
     const { sql, dialect } = req.body;
 
@@ -303,16 +389,10 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
       return res.status(400).json({ error: 'SQL content is required' });
     }
 
-    const result = await db
-      .select()
-      .from(schema.schemas)
-      .where(eq(schema.schemas.id, id));
-
-    if (result.length === 0) {
+    const currentSchema = await verifySchemaAccess(id, tenantId);
+    if (!currentSchema) {
       return res.status(404).json({ error: 'Schema not found' });
     }
-
-    const currentSchema = result[0];
 
     // Merge DDL and preserve existing table UI coordinates
     const mergedJson = sqlToSchemaJson(sql, {
@@ -333,7 +413,12 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
     await db
       .update(schema.projects)
       .set({ updatedAt: now })
-      .where(eq(schema.projects.id, currentSchema.projectId));
+      .where(
+        and(
+          eq(schema.projects.id, currentSchema.projectId),
+          eq(schema.projects.tenantId, tenantId)
+        )
+      );
 
     const finalSql = schemaJsonToSql(mergedJson, dialect);
 
@@ -349,10 +434,17 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
   }
 });
 
-// DELETE /api/schemas/:id - Delete a schema
+// DELETE /api/schemas/:id - Delete a schema (tenant-isolated)
 app.delete('/api/schemas/:id', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { id } = req.params;
+
+    const currentSchema = await verifySchemaAccess(id, tenantId);
+    if (!currentSchema) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
+
     await db.delete(schema.schemas).where(eq(schema.schemas.id, id));
     res.json({ success: true });
   } catch (error) {
@@ -361,12 +453,18 @@ app.delete('/api/schemas/:id', async (req, res) => {
   }
 });
 
-// GET /api/schemas/:schemaId/chat - Fetch paginated chat messages for a schema
+// GET /api/schemas/:schemaId/chat - Fetch paginated chat messages for a schema (tenant-isolated)
 app.get('/api/schemas/:schemaId/chat', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { schemaId } = req.params;
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
+
+    const currentSchema = await verifySchemaAccess(schemaId, tenantId);
+    if (!currentSchema) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
 
     // Find or create chat
     const activeChat = await db
@@ -412,10 +510,17 @@ app.get('/api/schemas/:schemaId/chat', async (req, res) => {
   }
 });
 
-// DELETE /api/schemas/:schemaId/chat - Clear chat messages for a schema
+// DELETE /api/schemas/:schemaId/chat - Clear chat messages for a schema (tenant-isolated)
 app.delete('/api/schemas/:schemaId/chat', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { schemaId } = req.params;
+
+    const currentSchema = await verifySchemaAccess(schemaId, tenantId);
+    if (!currentSchema) {
+      return res.status(404).json({ error: 'Schema not found' });
+    }
+
     const activeChat = await db
       .select()
       .from(schema.chats)
@@ -438,12 +543,20 @@ app.delete('/api/schemas/:schemaId/chat', async (req, res) => {
   }
 });
 
-// POST /api/chat - Talk to AI assistant with DDL schema context
+// POST /api/chat - Talk to AI assistant with DDL schema context (tenant-isolated)
 app.post('/api/chat', async (req, res) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { messages, ddlContext, schemaId } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
+    }
+
+    if (schemaId) {
+      const currentSchema = await verifySchemaAccess(schemaId, tenantId);
+      if (!currentSchema) {
+        return res.status(404).json({ error: 'Schema not found' });
+      }
     }
 
     const aiClient = getAiClient();

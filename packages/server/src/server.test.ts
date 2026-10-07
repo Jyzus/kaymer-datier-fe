@@ -1,11 +1,12 @@
-import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import { and, eq } from 'drizzle-orm';
+import express from 'express';
+
 import { db, schema } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { schemaJsonToSql, sqlToSchemaJson } from './services/sqlConverter.js';
-import { eq } from 'drizzle-orm';
 
 async function runIntegrationTest() {
   console.log('--- STARTING SERVER INTEGRATION TESTS ---');
@@ -25,37 +26,60 @@ async function runIntegrationTest() {
     status: (code: number) => ({
       json: (data: any) => {
         if (code === 401) authPassed = true;
-      }
-    })
+      },
+    }),
   };
-  authMiddleware(mockReqNoAuth, mockResNoAuth, () => {});
-  console.log('Rejection without Bearer token:', authPassed ? 'PASSED (401)' : 'FAILED');
+  await authMiddleware(mockReqNoAuth, mockResNoAuth, () => {});
+  console.log(
+    'Rejection without Bearer token:',
+    authPassed ? 'PASSED (401)' : 'FAILED'
+  );
 
   let invalidAuthPassed = false;
-  const mockReqInvalidAuth: any = { headers: { authorization: 'Bearer wrong-key' } };
+  const mockReqInvalidAuth: any = {
+    headers: { authorization: 'Bearer wrong-key' },
+  };
   const mockResInvalidAuth: any = {
     status: (code: number) => ({
       json: (data: any) => {
         if (code === 401) invalidAuthPassed = true;
-      }
-    })
+      },
+    }),
   };
-  authMiddleware(mockReqInvalidAuth, mockResInvalidAuth, () => {});
-  console.log('Rejection with invalid Bearer token:', invalidAuthPassed ? 'PASSED (401)' : 'FAILED');
+  await authMiddleware(mockReqInvalidAuth, mockResInvalidAuth, () => {});
+  console.log(
+    'Rejection with invalid Bearer token:',
+    invalidAuthPassed ? 'PASSED (401)' : 'FAILED'
+  );
 
   let validAuthPassed = false;
-  const mockReqValidAuth: any = { headers: { authorization: `Bearer ${apiKey}` } };
-  authMiddleware(mockReqValidAuth, {} as any, () => {
+  const mockReqValidAuth: any = {
+    headers: { authorization: `Bearer ${apiKey}` },
+  };
+  await authMiddleware(mockReqValidAuth, {} as any, () => {
     validAuthPassed = true;
   });
-  console.log('Acceptance with valid Bearer token:', validAuthPassed ? 'PASSED (next called)' : 'FAILED');
+  console.log(
+    'Acceptance with valid Bearer token:',
+    validAuthPassed ? 'PASSED (next called)' : 'FAILED'
+  );
+  console.log(
+    'Context injected on req.user:',
+    mockReqValidAuth.user?.tenantId
+      ? 'PASSED: ' + mockReqValidAuth.user.tenantId
+      : 'FAILED'
+  );
 
-  // 2. Test Project Creation & Schema From SQL
-  console.log('\n[TEST 2] Testing POST /api/projects/:projectId/schemas/from-sql...');
+  // 2. Test Project Creation with tenant isolation & Schema From SQL
+  console.log(
+    '\n[TEST 2] Testing POST /api/projects/:projectId/schemas/from-sql with Tenant Isolation...'
+  );
   const testProjectId = crypto.randomUUID();
+  const testTenantId = '00000000-0000-0000-0000-000000000001';
   const now = new Date();
   await db.insert(schema.projects).values({
     id: testProjectId,
+    tenantId: testTenantId,
     name: 'Planifier Integration Test Project',
     description: 'Project for testing Datier REST API',
     createdAt: now,
@@ -95,24 +119,35 @@ CREATE INDEX idx_orders_customer_id ON orders (customer_id);
 
   // 3. Test GET /api/schemas/:id/sql
   console.log('\n[TEST 3] Testing GET /api/schemas/:id/sql...');
-  const savedSchema = (await db.select().from(schema.schemas).where(eq(schema.schemas.id, testSchemaId)))[0];
+  const savedSchema = (
+    await db
+      .select()
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, testSchemaId))
+  )[0];
   const exportedSql = schemaJsonToSql(savedSchema.value, 'postgresql');
-  console.log('Exported clean SQL from DB:');
-  console.log(exportedSql);
 
   const hasCustomers = exportedSql.includes('CREATE TABLE customers');
   const hasOrders = exportedSql.includes('CREATE TABLE orders');
-  const hasFk = exportedSql.includes('FOREIGN KEY (customer_id) REFERENCES customers (id)');
-  const hasIndex = exportedSql.includes('INDEX idx_orders_customer_id ON orders');
+  const hasFk = exportedSql.includes(
+    'FOREIGN KEY (customer_id) REFERENCES customers (id)'
+  );
+  const hasIndex = exportedSql.includes(
+    'INDEX idx_orders_customer_id ON orders'
+  );
 
-  console.log('Export contains customers table:', hasCustomers ? 'PASSED' : 'FAILED');
+  console.log(
+    'Export contains customers table:',
+    hasCustomers ? 'PASSED' : 'FAILED'
+  );
   console.log('Export contains orders table:', hasOrders ? 'PASSED' : 'FAILED');
   console.log('Export contains foreign key:', hasFk ? 'PASSED' : 'FAILED');
   console.log('Export contains index:', hasIndex ? 'PASSED' : 'FAILED');
 
   // 4. Test PUT /api/schemas/:id/sql (DDL merge with coordinate preservation)
-  console.log('\n[TEST 4] Testing PUT /api/schemas/:id/sql (merge & position preservation)...');
-  // First, manually set custom coordinates on customers table in DB
+  console.log(
+    '\n[TEST 4] Testing PUT /api/schemas/:id/sql (merge & position preservation)...'
+  );
   const parsedVal = JSON.parse(savedSchema.value);
   const custTableKey = Object.keys(parsedVal.collections.tableEntities).find(
     k => parsedVal.collections.tableEntities[k].name === 'customers'
@@ -120,9 +155,11 @@ CREATE INDEX idx_orders_customer_id ON orders (customer_id);
   parsedVal.collections.tableEntities[custTableKey].ui.x = 777;
   parsedVal.collections.tableEntities[custTableKey].ui.y = 888;
   parsedVal.collections.tableEntities[custTableKey].ui.color = '#10b981';
-  await db.update(schema.schemas).set({ value: JSON.stringify(parsedVal) }).where(eq(schema.schemas.id, testSchemaId));
+  await db
+    .update(schema.schemas)
+    .set({ value: JSON.stringify(parsedVal) })
+    .where(eq(schema.schemas.id, testSchemaId));
 
-  // Now apply an update: modify customers, add order_items table
   const updateDdl = `
 CREATE TABLE customers (
   id SERIAL PRIMARY KEY,
@@ -144,24 +181,49 @@ CREATE TABLE order_items (
     dialect: 'postgresql',
   });
 
-  await db.update(schema.schemas).set({ value: updatedMergedJson }).where(eq(schema.schemas.id, testSchemaId));
+  await db
+    .update(schema.schemas)
+    .set({ value: updatedMergedJson })
+    .where(eq(schema.schemas.id, testSchemaId));
 
-  const afterMergeSchema = (await db.select().from(schema.schemas).where(eq(schema.schemas.id, testSchemaId)))[0];
+  const afterMergeSchema = (
+    await db
+      .select()
+      .from(schema.schemas)
+      .where(eq(schema.schemas.id, testSchemaId))
+  )[0];
   const afterParsed = JSON.parse(afterMergeSchema.value);
-  const afterCustTable: any = Object.values(afterParsed.collections.tableEntities).find((t: any) => t.name === 'customers');
-  const afterOrdersTable: any = Object.values(afterParsed.collections.tableEntities).find((t: any) => t.name === 'orders');
-  const afterItemsTable: any = Object.values(afterParsed.collections.tableEntities).find((t: any) => t.name === 'order_items');
+  const afterCustTable: any = Object.values(
+    afterParsed.collections.tableEntities
+  ).find((t: any) => t.name === 'customers');
+  const afterOrdersTable: any = Object.values(
+    afterParsed.collections.tableEntities
+  ).find((t: any) => t.name === 'orders');
+  const afterItemsTable: any = Object.values(
+    afterParsed.collections.tableEntities
+  ).find((t: any) => t.name === 'order_items');
 
-  console.log('Preserved customers (x=777, y=888):', afterCustTable?.ui.x === 777 && afterCustTable?.ui.y === 888 ? 'PASSED' : 'FAILED: ' + JSON.stringify(afterCustTable?.ui));
-  console.log('Preserved customers color (#10b981):', afterCustTable?.ui.color === '#10b981' ? 'PASSED' : 'FAILED');
-  console.log('Unmodified orders table preserved:', Boolean(afterOrdersTable) ? 'PASSED' : 'FAILED');
-  console.log('New order_items table added:', Boolean(afterItemsTable) ? 'PASSED' : 'FAILED');
-
-  const finalSql = schemaJsonToSql(afterMergeSchema.value, 'postgresql');
-  console.log('\nFinal Merged SQL from DB:\n' + finalSql);
+  console.log(
+    'Preserved customers (x=777, y=888):',
+    afterCustTable?.ui.x === 777 && afterCustTable?.ui.y === 888
+      ? 'PASSED'
+      : 'FAILED: ' + JSON.stringify(afterCustTable?.ui)
+  );
+  console.log(
+    'Preserved customers color (#10b981):',
+    afterCustTable?.ui.color === '#10b981' ? 'PASSED' : 'FAILED'
+  );
+  console.log(
+    'Unmodified orders table preserved:',
+    afterOrdersTable ? 'PASSED' : 'FAILED'
+  );
+  console.log(
+    'New order_items table added:',
+    afterItemsTable ? 'PASSED' : 'FAILED'
+  );
 
   // Clean up test data
-  console.log('Cleaning up test project & schemas...');
+  console.log('\nCleaning up test project & schemas...');
   await db.delete(schema.projects).where(eq(schema.projects.id, testProjectId));
   console.log('Cleanup completed.');
 

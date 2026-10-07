@@ -548,6 +548,9 @@ importers:
       express:
         specifier: ^4.19.2
         version: 4.22.2(supports-color@8.1.1)
+      jose:
+        specifier: ^6.2.12
+        version: 6.2.12
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
@@ -6990,6 +6993,9 @@ packages:
 
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   jotai-devtools@0.8.0:
     resolution: {integrity: sha512-dSxiDuEz/fvgxC5hCWJfRHTSaDz8RBaQ2DUO3SJqvskIP44BUxx5EJSQHN9WdbPqp9VQ2Db8yIR9jLGbpnuLtA==}
@@ -16608,6 +16614,8 @@ snapshots:
       regenerator-runtime: 0.13.11
 
   jju@1.4.0: {}
+
+  jose@6.2.12: {}
 
   jotai-devtools@0.8.0(@emotion/react@11.11.4(@types/react@18.2.77)(react@18.2.0))(@types/react@18.2.77)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(redux@5.0.1):
     dependencies:

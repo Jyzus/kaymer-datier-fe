@@ -206,4 +206,29 @@ export const authService = {
     const body = await res.json();
     return { ok: res.ok, status: res.status, body };
   },
+
+  async getGoogleOAuthUrl(): Promise<string> {
+    const res = await fetch(`${MS_AUTH_URL}/v1/auth/oauth/google`, {
+      method: 'GET',
+      redirect: 'manual',
+    });
+    const location = res.headers.get('location');
+    if (!location) {
+      throw new Error(
+        'ms-auth did not return redirect Location for Google OAuth'
+      );
+    }
+    return location;
+  },
+
+  async handleGoogleOAuthCallback(code: string, state: string) {
+    const res = await fetch(
+      `${MS_AUTH_URL}/v1/auth/oauth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+      {
+        method: 'GET',
+      }
+    );
+    const body = await res.json();
+    return { ok: res.ok, status: res.status, body };
+  },
 };

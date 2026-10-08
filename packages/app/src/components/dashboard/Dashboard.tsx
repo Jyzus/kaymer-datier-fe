@@ -1,6 +1,10 @@
 import {
   CalendarIcon,
+  CubeIcon,
   ExclamationTriangleIcon,
+  ExitIcon,
+  LockClosedIcon,
+  MagnifyingGlassIcon,
   Pencil1Icon,
   PlusIcon,
   TrashIcon,
@@ -12,13 +16,12 @@ import {
   Card,
   Dialog,
   Flex,
-  Grid,
   Heading,
   Table,
   Text,
   TextField,
 } from '@radix-ui/themes';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import {
@@ -44,6 +47,9 @@ const Dashboard: React.FC = () => {
 
   // Current User
   const currentUser = getCurrentUser();
+
+  // Search filter
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Create Project Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -127,7 +133,7 @@ const Dashboard: React.FC = () => {
       setNewProjectDesc('');
       setIsCreateOpen(false);
     } catch (err) {
-      alert('Error creating project');
+      alert('Error al crear el proyecto');
     }
   };
 
@@ -143,7 +149,7 @@ const Dashboard: React.FC = () => {
       });
       setIsEditOpen(false);
     } catch (err) {
-      alert('Error updating project');
+      alert('Error al actualizar el proyecto');
     }
   };
 
@@ -161,7 +167,7 @@ const Dashboard: React.FC = () => {
       try {
         await deleteProject(id);
       } catch (err) {
-        alert('Error deleting project');
+        alert('Error al eliminar el proyecto');
       }
     }
   };
@@ -190,42 +196,58 @@ const Dashboard: React.FC = () => {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     }).format(d);
   };
 
+  const filteredProjects = useMemo(() => {
+    if (!searchQuery.trim()) return projects;
+    const q = searchQuery.toLowerCase().trim();
+    return projects.filter(
+      p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q))
+    );
+  }, [projects, searchQuery]);
+
+  const userInitial = (
+    currentUser?.first_name?.[0] ||
+    currentUser?.email?.[0] ||
+    'U'
+  ).toUpperCase();
+
   return (
     <div css={styles.container}>
-      {/* Header */}
+      {/* Top Header */}
       <div css={styles.header}>
         <Flex direction="column" gap="1">
           <Heading size="8" css={styles.title}>
-            Mis Proyectos Base de Datos
+            Mis Proyectos
           </Heading>
           <Text size="2" color="gray">
-            Administra y modela tus esquemas visuales con asistencia de IA
+            Modelado visual de bases de datos y esquemas asistido por IA
           </Text>
         </Flex>
 
-        <Flex align="center" gap="3">
+        <Flex align="center" gap="3" wrap="wrap">
           {/* API Keys Dialog */}
           <Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
             <Dialog.Trigger>
               <Button
                 size="3"
-                variant="soft"
+                variant="surface"
                 color="gray"
                 onClick={handleOpenApiKeys}
+                style={{ cursor: 'pointer', fontWeight: 500 }}
               >
+                <LockClosedIcon width="15" height="15" />
                 API Keys
               </Button>
             </Dialog.Trigger>
-            <Dialog.Content style={{ maxWidth: 600 }}>
+            <Dialog.Content style={{ maxWidth: 620, borderRadius: 16 }}>
               <Dialog.Title>Gestión de API Keys (M2M)</Dialog.Title>
               <Dialog.Description size="2" mb="4">
                 Administra tus claves de acceso para conectar Planifier Docs,
-                workers y herramientas externas.
+                scripts de migración y servicios externos.
               </Dialog.Description>
 
               {apiKeyError && (
@@ -243,17 +265,18 @@ const Dashboard: React.FC = () => {
                     <strong>¡Nueva API Key generada con éxito!</strong>
                     <br />
                     Guárdala ahora. Por seguridad, no se volverá a mostrar en
-                    claro:
+                    texto claro:
                     <br />
                     <code
                       style={{
                         userSelect: 'all',
                         wordBreak: 'break-all',
                         display: 'block',
-                        marginTop: 6,
-                        padding: '4px 8px',
+                        marginTop: 8,
+                        padding: '6px 10px',
                         background: 'var(--green-3)',
-                        borderRadius: 4,
+                        borderRadius: 6,
+                        fontFamily: 'monospace',
                       }}
                     >
                       {createdKey}
@@ -262,7 +285,7 @@ const Dashboard: React.FC = () => {
                 </Callout.Root>
               )}
 
-              <form onSubmit={handleCreateApiKey} style={{ marginBottom: 16 }}>
+              <form onSubmit={handleCreateApiKey} style={{ marginBottom: 20 }}>
                 <Flex gap="2">
                   <TextField.Input
                     placeholder="Nombre de la clave (ej. Planifier Integration)"
@@ -273,6 +296,7 @@ const Dashboard: React.FC = () => {
                   <Button
                     type="submit"
                     disabled={apiKeyLoading || !newKeyName.trim()}
+                    style={{ cursor: 'pointer' }}
                   >
                     Generar Clave
                   </Button>
@@ -314,6 +338,7 @@ const Dashboard: React.FC = () => {
                             color="red"
                             type="button"
                             onClick={() => handleRevokeApiKey(k.id)}
+                            style={{ cursor: 'pointer' }}
                           >
                             Revocar
                           </Button>
@@ -326,7 +351,12 @@ const Dashboard: React.FC = () => {
 
               <Flex justify="end" mt="4">
                 <Dialog.Close>
-                  <Button variant="soft" color="gray" type="button">
+                  <Button
+                    variant="soft"
+                    color="gray"
+                    type="button"
+                    style={{ cursor: 'pointer' }}
+                  >
                     Cerrar
                   </Button>
                 </Dialog.Close>
@@ -337,26 +367,34 @@ const Dashboard: React.FC = () => {
           {/* Nuevo Proyecto Dialog */}
           <Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <Dialog.Trigger>
-              <Button size="3" variant="solid">
+              <Button
+                size="3"
+                variant="solid"
+                style={{
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  background:
+                    'linear-gradient(135deg, var(--accent-9), var(--accent-10))',
+                }}
+              >
                 <PlusIcon width="16" height="16" /> Nuevo Proyecto
               </Button>
             </Dialog.Trigger>
-            <Dialog.Content style={{ maxWidth: 450 }}>
+            <Dialog.Content style={{ maxWidth: 460, borderRadius: 16 }}>
               <Dialog.Title>Nuevo Proyecto</Dialog.Title>
               <Dialog.Description size="2" mb="4">
-                Crea un nuevo proyecto para agrupar múltiples esquemas de bases
-                de datos.
+                Crea un nuevo proyecto para modelar tus tablas y relaciones ERD.
               </Dialog.Description>
 
               <form onSubmit={handleCreateProject}>
                 <Flex direction="column" gap="3">
                   <label>
-                    <Text as="div" size="2" mb="1" weight="bold">
+                    <Text as="div" size="2" mb="1" weight="medium">
                       Nombre del Proyecto
                     </Text>
                     <TextField.Input
                       required
-                      placeholder="Ej. Proyecto A"
+                      placeholder="Ej. Tienda Online"
                       value={newProjectName}
                       onChange={e =>
                         setNewProjectName((e.target as HTMLInputElement).value)
@@ -364,11 +402,11 @@ const Dashboard: React.FC = () => {
                     />
                   </label>
                   <label>
-                    <Text as="div" size="2" mb="1" weight="bold">
+                    <Text as="div" size="2" mb="1" weight="medium">
                       Descripción (opcional)
                     </Text>
                     <TextField.Input
-                      placeholder="Ej. Sistema de autenticación y ventas"
+                      placeholder="Ej. Modelado de clientes, pedidos y pagos"
                       value={newProjectDesc}
                       onChange={e =>
                         setNewProjectDesc((e.target as HTMLInputElement).value)
@@ -379,77 +417,180 @@ const Dashboard: React.FC = () => {
 
                 <Flex gap="3" mt="4" justify="end">
                   <Dialog.Close>
-                    <Button variant="soft" color="gray" type="button">
+                    <Button
+                      variant="soft"
+                      color="gray"
+                      type="button"
+                      style={{ cursor: 'pointer' }}
+                    >
                       Cancelar
                     </Button>
                   </Dialog.Close>
-                  <Button type="submit">Crear Proyecto</Button>
+                  <Button type="submit" style={{ cursor: 'pointer' }}>
+                    Crear Proyecto
+                  </Button>
                 </Flex>
               </form>
             </Dialog.Content>
           </Dialog.Root>
 
           {/* User Profile & Logout */}
-          <Flex
-            align="center"
-            gap="2"
-            style={{
-              borderLeft: '1px solid var(--gray-6)',
-              paddingLeft: '12px',
-            }}
-          >
-            <Text size="2" color="gray" weight="medium">
-              {currentUser?.first_name || currentUser?.email || 'Usuario'}
-            </Text>
-            <Button
-              size="2"
-              variant="ghost"
-              color="red"
-              onClick={() => api.logout()}
+          <div css={styles.userPill}>
+            <Flex
+              align="center"
+              justify="center"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background:
+                  'linear-gradient(135deg, var(--accent-9), var(--accent-11))',
+                color: 'white',
+                fontWeight: 700,
+                fontSize: 12,
+              }}
             >
-              Salir
-            </Button>
-          </Flex>
+              {userInitial}
+            </Flex>
+            <Text size="2" color="gray" weight="medium">
+              {currentUser?.first_name ||
+                currentUser?.email?.split('@')[0] ||
+                'Usuario'}
+            </Text>
+            <button
+              type="button"
+              css={styles.iconButton}
+              title="Cerrar sesión"
+              onClick={() => api.logout()}
+              style={{ marginLeft: 4 }}
+            >
+              <ExitIcon width="14" height="14" />
+            </button>
+          </div>
         </Flex>
       </div>
 
+      {/* Search & Counter Bar */}
+      <div css={styles.searchBar}>
+        <TextField.Root style={{ maxWidth: 360, width: '100%' }}>
+          <TextField.Slot>
+            <MagnifyingGlassIcon height="16" width="16" />
+          </TextField.Slot>
+          <TextField.Input
+            placeholder="Buscar proyectos..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </TextField.Root>
+
+        <Text size="2" color="gray">
+          {filteredProjects.length}{' '}
+          {filteredProjects.length === 1
+            ? 'proyecto encontrado'
+            : 'proyectos encontrados'}
+        </Text>
+      </div>
+
       {/* Grid of projects */}
-      {projects.length === 0 ? (
-        <Flex
-          direction="column"
-          align="center"
-          justify="center"
-          style={{ flexGrow: 1, minHeight: 300 }}
-          gap="4"
+      {filteredProjects.length === 0 ? (
+        <Card
+          style={{
+            padding: 48,
+            borderRadius: 16,
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--color-surface, var(--gray-2))',
+            border: '1px dashed var(--gray-a6)',
+            marginTop: 20,
+          }}
         >
-          <Text size="4" color="gray">
-            No tienes proyectos creados todavía.
+          <Flex
+            align="center"
+            justify="center"
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background: 'var(--gray-4)',
+              color: 'var(--gray-10)',
+              marginBottom: 16,
+            }}
+          >
+            <CubeIcon width="28" height="28" />
+          </Flex>
+          <Heading size="4" mb="1" weight="medium">
+            {searchQuery.trim()
+              ? 'No hay proyectos que coincidan con la búsqueda'
+              : 'Aún no tienes ningún proyecto'}
+          </Heading>
+          <Text size="2" color="gray" mb="4" style={{ maxWidth: 360 }}>
+            {searchQuery.trim()
+              ? 'Intenta con otro término o limpia el filtro de búsqueda.'
+              : 'Comienza creando tu primer proyecto para modelar tablas y generar esquemas SQL.'}
           </Text>
-          <Button size="3" onClick={() => setIsCreateOpen(true)}>
-            <PlusIcon width="16" height="16" /> Crear mi primer proyecto
+          <Button
+            size="3"
+            onClick={() => {
+              if (searchQuery.trim()) {
+                setSearchQuery('');
+              } else {
+                setIsCreateOpen(true);
+              }
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            {searchQuery.trim()
+              ? 'Limpiar búsqueda'
+              : '+ Crear mi primer proyecto'}
           </Button>
-        </Flex>
+        </Card>
       ) : (
-        <Grid css={styles.grid}>
-          {projects.map(project => (
-            <Card
+        <div css={styles.grid}>
+          {filteredProjects.map(project => (
+            <div
               key={project.id}
               css={styles.card}
               onClick={() => handleCardClick(project.id)}
             >
+              <div css={styles.cardHighlight} />
               <div css={styles.cardBody}>
                 <Flex justify="between" align="start" gap="2">
-                  <Heading
-                    size="5"
-                    weight="bold"
-                    style={{ color: 'var(--accent-11)' }}
-                  >
-                    {project.name}
-                  </Heading>
+                  <Flex align="center" gap="2" style={{ overflow: 'hidden' }}>
+                    <Flex
+                      align="center"
+                      justify="center"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: 'var(--accent-a3)',
+                        color: 'var(--accent-11)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CubeIcon width="18" height="18" />
+                    </Flex>
+                    <Heading
+                      size="4"
+                      weight="bold"
+                      style={{
+                        color: 'var(--gray-12)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {project.name}
+                    </Heading>
+                  </Flex>
+
                   <Flex gap="1">
                     <button
                       type="button"
-                      css={styles.editButton}
+                      css={styles.iconButton}
                       title="Editar proyecto"
                       onClick={e =>
                         handleOpenEdit(
@@ -464,7 +605,7 @@ const Dashboard: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      css={styles.actionButton}
+                      css={styles.deleteButton}
                       title="Eliminar proyecto"
                       onClick={e =>
                         handleDeleteProject(e, project.id, project.name)
@@ -474,11 +615,13 @@ const Dashboard: React.FC = () => {
                     </button>
                   </Flex>
                 </Flex>
+
                 <Text
                   size="2"
                   color="gray"
                   style={{
-                    minHeight: '40px',
+                    minHeight: '38px',
+                    lineHeight: '1.4',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     display: '-webkit-box',
@@ -489,26 +632,30 @@ const Dashboard: React.FC = () => {
                   {project.description || 'Sin descripción'}
                 </Text>
               </div>
+
               <div css={styles.cardFooter}>
                 <Flex align="center" gap="1">
                   <CalendarIcon
-                    width="14"
-                    height="14"
+                    width="13"
+                    height="13"
                     style={{ color: 'var(--gray-8)' }}
                   />
                   <Text size="1" color="gray">
-                    Actualizado: {formatDate(project.updatedAt)}
+                    {formatDate(project.updatedAt)}
                   </Text>
                 </Flex>
+                <Badge size="1" variant="soft" color="indigo">
+                  PostgreSQL
+                </Badge>
               </div>
-            </Card>
+            </div>
           ))}
-        </Grid>
+        </div>
       )}
 
       {/* Edit Project Dialog */}
       <Dialog.Root open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <Dialog.Content style={{ maxWidth: 450 }}>
+        <Dialog.Content style={{ maxWidth: 460, borderRadius: 16 }}>
           <Dialog.Title>Editar Proyecto</Dialog.Title>
           <Dialog.Description size="2" mb="4">
             Modifica la información del proyecto seleccionado.
@@ -517,12 +664,12 @@ const Dashboard: React.FC = () => {
           <form onSubmit={handleEditProject}>
             <Flex direction="column" gap="3">
               <label>
-                <Text as="div" size="2" mb="1" weight="bold">
+                <Text as="div" size="2" mb="1" weight="medium">
                   Nombre del Proyecto
                 </Text>
                 <TextField.Input
                   required
-                  placeholder="Ej. Proyecto A"
+                  placeholder="Ej. Tienda Online"
                   value={editProjectName}
                   onChange={e =>
                     setEditProjectName((e.target as HTMLInputElement).value)
@@ -530,11 +677,11 @@ const Dashboard: React.FC = () => {
                 />
               </label>
               <label>
-                <Text as="div" size="2" mb="1" weight="bold">
+                <Text as="div" size="2" mb="1" weight="medium">
                   Descripción (opcional)
                 </Text>
                 <TextField.Input
-                  placeholder="Ej. Sistema de autenticación y ventas"
+                  placeholder="Ej. Modelado de clientes, pedidos y pagos"
                   value={editProjectDesc}
                   onChange={e =>
                     setEditProjectDesc((e.target as HTMLInputElement).value)
@@ -545,11 +692,18 @@ const Dashboard: React.FC = () => {
 
             <Flex gap="3" mt="4" justify="end">
               <Dialog.Close>
-                <Button variant="soft" color="gray" type="button">
+                <Button
+                  variant="soft"
+                  color="gray"
+                  type="button"
+                  style={{ cursor: 'pointer' }}
+                >
                   Cancelar
                 </Button>
               </Dialog.Close>
-              <Button type="submit">Guardar Cambios</Button>
+              <Button type="submit" style={{ cursor: 'pointer' }}>
+                Guardar Cambios
+              </Button>
             </Flex>
           </form>
         </Dialog.Content>

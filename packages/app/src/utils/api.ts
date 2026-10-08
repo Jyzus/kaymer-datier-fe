@@ -199,6 +199,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Authentication
+  getGoogleAuthUrl: () => `${API_BASE}/auth/oauth/google`,
+
   login: async (email: string, password: string, tenant_slug?: string) => {
     const res = await request<AuthResponse>('/auth/login', {
       method: 'POST',

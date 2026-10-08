@@ -158,3 +158,85 @@ authRouter.post('/api-keys/:id/revoke', async (req, res) => {
       .json({ error: 'Failed to communicate with auth service' });
   }
 });
+
+// GET /api/auth/oauth/google - Initiate Google OAuth
+authRouter.get('/oauth/google', async (req, res) => {
+  try {
+    const googleAuthUrl = await authService.getGoogleOAuthUrl();
+    return res.redirect(302, googleAuthUrl);
+  } catch (error: any) {
+    console.error('Google OAuth initiate error:', error);
+    const frontendUrl =
+      process.env.APP_URL ||
+      process.env.FRONTEND_URL ||
+      'https://app.datier.pro';
+    return res.redirect(
+      302,
+      `${frontendUrl}/login?error=${encodeURIComponent(
+        error.message || 'Error al iniciar sesión con Google'
+      )}`
+    );
+  }
+});
+
+// GET /api/auth/oauth/google/callback - Handle Google OAuth callback from Google
+authRouter.get('/oauth/google/callback', async (req, res) => {
+  const frontendUrl =
+    process.env.APP_URL || process.env.FRONTEND_URL || 'https://app.datier.pro';
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    if (error) {
+      const msg =
+        (error_description as string) ||
+        (error as string) ||
+        'Acceso con Google cancelado';
+      return res.redirect(
+        302,
+        `${frontendUrl}/login?error=${encodeURIComponent(msg)}`
+      );
+    }
+
+    if (!code || !state) {
+      return res.redirect(
+        302,
+        `${frontendUrl}/login?error=${encodeURIComponent(
+          'Parámetros de OAuth incompletos'
+        )}`
+      );
+    }
+
+    const result = await authService.handleGoogleOAuthCallback(
+      code as string,
+      state as string
+    );
+
+    if (!result.ok || !result.body?.access_token) {
+      const msg =
+        result.body?.message ||
+        result.body?.error ||
+        'Error al verificar autenticación con Google';
+      return res.redirect(
+        302,
+        `${frontendUrl}/login?error=${encodeURIComponent(msg)}`
+      );
+    }
+
+    const { access_token, refresh_token } = result.body;
+    const redirectUrl = new URL(`${frontendUrl}/login`);
+    redirectUrl.searchParams.set('token', access_token);
+    if (refresh_token) {
+      redirectUrl.searchParams.set('refresh', refresh_token);
+    }
+
+    return res.redirect(302, redirectUrl.toString());
+  } catch (error: any) {
+    console.error('Google OAuth callback error:', error);
+    return res.redirect(
+      302,
+      `${frontendUrl}/login?error=${encodeURIComponent(
+        'Error interno procesando Google OAuth'
+      )}`
+    );
+  }
+});

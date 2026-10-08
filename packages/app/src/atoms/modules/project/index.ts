@@ -4,14 +4,18 @@ import { atomWithImmer } from 'jotai-immer';
 import { api, Project } from '@/utils/api';
 
 export const projectsAtom = atomWithImmer<Project[]>([]);
+export const projectsLoadingAtom = atom<boolean>(true);
 export const selectedProjectIdAtom = atom<string | null>(null);
 
 const updateProjectsAtom = atom(null, async (get, set) => {
+  set(projectsLoadingAtom, true);
   try {
     const list = await api.getProjects();
     set(projectsAtom, list);
   } catch (error) {
     console.error('Error fetching projects:', error);
+  } finally {
+    set(projectsLoadingAtom, false);
   }
 });
 
@@ -91,6 +95,7 @@ const deleteProjectAtom = atom(null, async (get, set, id: string) => {
 });
 
 export const useProjects = () => useAtomValue(projectsAtom);
+export const useProjectsLoading = () => useAtomValue(projectsLoadingAtom);
 export const useSelectedProjectId = () => useAtomValue(selectedProjectIdAtom);
 export const useSetSelectedProjectId = () => useSetAtom(selectedProjectIdAtom);
 export const useUpdateProjects = () => useSetAtom(updateProjectsAtom);

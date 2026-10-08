@@ -1,12 +1,18 @@
 import {
   CalendarIcon,
+  CheckIcon,
+  CopyIcon,
   CubeIcon,
   ExclamationTriangleIcon,
   ExitIcon,
+  LayersIcon,
+  LightningBoltIcon,
   LockClosedIcon,
   MagnifyingGlassIcon,
   Pencil1Icon,
   PlusIcon,
+  ReloadIcon,
+  RocketIcon,
   TrashIcon,
 } from '@radix-ui/react-icons';
 import {
@@ -28,6 +34,7 @@ import {
   useAddProject,
   useDeleteProject,
   useProjects,
+  useProjectsLoading,
   useSetSelectedProjectId,
   useUpdateProject,
   useUpdateProjects,
@@ -39,6 +46,7 @@ import * as styles from './Dashboard.styles';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const projects = useProjects();
+  const isLoading = useProjectsLoading();
   const updateProjects = useUpdateProjects();
   const addProject = useAddProject();
   const updateProject = useUpdateProject();
@@ -67,12 +75,14 @@ const Dashboard: React.FC = () => {
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
   const handleOpenApiKeys = async () => {
     setIsApiKeyOpen(true);
     setCreatedKey(null);
+    setCopiedKey(false);
     setApiKeyError(null);
     try {
       setApiKeyLoading(true);
@@ -90,16 +100,25 @@ const Dashboard: React.FC = () => {
     if (!newKeyName.trim()) return;
     try {
       setApiKeyLoading(true);
-      const res = await api.createApiKey(newKeyName.trim(), 'subscription');
+      setApiKeyError(null);
+      const res = await api.createApiKey(newKeyName.trim(), 'account');
       setCreatedKey(res.api_key);
+      setCopiedKey(false);
       setNewKeyName('');
       const list = await api.getApiKeys();
       setApiKeys(list.keys || []);
     } catch (err: any) {
-      alert(err.message || 'Error creando API key');
+      setApiKeyError(err.message || 'Error al generar la API key');
     } finally {
       setApiKeyLoading(false);
     }
+  };
+
+  const handleCopyKey = () => {
+    if (!createdKey) return;
+    navigator.clipboard.writeText(createdKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2500);
   };
 
   const handleRevokeApiKey = async (id: string) => {
@@ -262,25 +281,51 @@ const Dashboard: React.FC = () => {
               {createdKey && (
                 <Callout.Root color="green" mb="3">
                   <Callout.Text>
-                    <strong>¡Nueva API Key generada con éxito!</strong>
-                    <br />
-                    Guárdala ahora. Por seguridad, no se volverá a mostrar en
-                    texto claro:
-                    <br />
-                    <code
-                      style={{
-                        userSelect: 'all',
-                        wordBreak: 'break-all',
-                        display: 'block',
-                        marginTop: 8,
-                        padding: '6px 10px',
-                        background: 'var(--green-3)',
-                        borderRadius: 6,
-                        fontFamily: 'monospace',
-                      }}
-                    >
-                      {createdKey}
-                    </code>
+                    <Flex direction="column" gap="2">
+                      <div>
+                        <strong>¡Nueva API Key generada con éxito!</strong>
+                        <br />
+                        <Text size="1" color="gray">
+                          Guárdala en un lugar seguro ahora. Por seguridad, no
+                          se volverá a mostrar en texto claro:
+                        </Text>
+                      </div>
+                      <Flex align="center" gap="2">
+                        <code
+                          style={{
+                            userSelect: 'all',
+                            wordBreak: 'break-all',
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: 'var(--green-3)',
+                            border: '1px solid var(--green-6)',
+                            borderRadius: 6,
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                          }}
+                        >
+                          {createdKey}
+                        </code>
+                        <Button
+                          type="button"
+                          size="2"
+                          variant="solid"
+                          color={copiedKey ? 'green' : 'gray'}
+                          onClick={handleCopyKey}
+                          style={{ cursor: 'pointer', flexShrink: 0 }}
+                        >
+                          {copiedKey ? (
+                            <>
+                              <CheckIcon width="16" height="16" /> Copiada
+                            </>
+                          ) : (
+                            <>
+                              <CopyIcon width="16" height="16" /> Copiar
+                            </>
+                          )}
+                        </Button>
+                      </Flex>
+                    </Flex>
                   </Callout.Text>
                 </Callout.Root>
               )}
@@ -298,7 +343,7 @@ const Dashboard: React.FC = () => {
                     disabled={apiKeyLoading || !newKeyName.trim()}
                     style={{ cursor: 'pointer' }}
                   >
-                    Generar Clave
+                    {apiKeyLoading ? 'Generando...' : 'Generar Clave'}
                   </Button>
                 </Flex>
               </form>
@@ -309,7 +354,7 @@ const Dashboard: React.FC = () => {
 
               {apiKeys.length === 0 ? (
                 <Text size="2" color="gray">
-                  No tienes API keys generadas.
+                  No tienes API keys generadas actualmente.
                 </Text>
               ) : (
                 <Table.Root size="1">
@@ -329,7 +374,13 @@ const Dashboard: React.FC = () => {
                           <Badge color="gray">{k.key_prefix}...</Badge>
                         </Table.Cell>
                         <Table.Cell>
-                          <Badge color="blue">{k.scope_type}</Badge>
+                          <Badge
+                            color={k.scope_type === 'account' ? 'cyan' : 'blue'}
+                          >
+                            {k.scope_type === 'account'
+                              ? 'Cuenta global'
+                              : k.scope_type}
+                          </Badge>
                         </Table.Cell>
                         <Table.Cell>
                           <Button
@@ -470,83 +521,163 @@ const Dashboard: React.FC = () => {
         </Flex>
       </div>
 
-      {/* Search & Counter Bar */}
-      <div css={styles.searchBar}>
-        <TextField.Root style={{ maxWidth: 360, width: '100%' }}>
-          <TextField.Slot>
-            <MagnifyingGlassIcon height="16" width="16" />
-          </TextField.Slot>
-          <TextField.Input
-            placeholder="Buscar proyectos..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-        </TextField.Root>
+      {/* Search & Counter Bar (Only rendered when user has projects) */}
+      {projects.length > 0 && (
+        <div css={styles.searchBar}>
+          <TextField.Root style={{ maxWidth: 360, width: '100%' }}>
+            <TextField.Slot>
+              <MagnifyingGlassIcon height="16" width="16" />
+            </TextField.Slot>
+            <TextField.Input
+              placeholder="Buscar proyectos..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </TextField.Root>
 
-        <Text size="2" color="gray">
-          {filteredProjects.length}{' '}
-          {filteredProjects.length === 1
-            ? 'proyecto encontrado'
-            : 'proyectos encontrados'}
-        </Text>
-      </div>
+          <Text size="2" color="gray">
+            {filteredProjects.length}{' '}
+            {filteredProjects.length === 1
+              ? 'proyecto encontrado'
+              : 'proyectos encontrados'}
+          </Text>
+        </div>
+      )}
 
-      {/* Grid of projects */}
-      {filteredProjects.length === 0 ? (
-        <Card
-          style={{
-            padding: 48,
-            borderRadius: 16,
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--color-surface, var(--gray-2))',
-            border: '1px dashed var(--gray-a6)',
-            marginTop: 20,
-          }}
-        >
+      {/* Main Content: Skeleton, Onboarding Hero, Search Empty, or Projects Grid */}
+      {isLoading && projects.length === 0 ? (
+        <div css={styles.skeletonGrid}>
+          <div css={styles.skeletonCard} />
+          <div css={styles.skeletonCard} />
+          <div css={styles.skeletonCard} />
+        </div>
+      ) : projects.length === 0 ? (
+        <div css={styles.onboardingContainer}>
+          <div css={styles.onboardingHighlight} />
+          <div css={styles.onboardingIconWrapper}>
+            <LayersIcon width="36" height="36" />
+          </div>
+          <Heading
+            size="7"
+            weight="bold"
+            mb="2"
+            style={{ color: 'var(--gray-12)', letterSpacing: '-0.02em' }}
+          >
+            Bienvenido a Datier
+          </Heading>
+          <Text
+            size="3"
+            color="gray"
+            mb="5"
+            style={{ maxWidth: 540, lineHeight: 1.6 }}
+          >
+            Comienza creando tu primer proyecto para modelar diagramas ERD,
+            diseñar bases de datos relacionales y generar esquemas SQL asistidos
+            por inteligencia artificial.
+          </Text>
+          <Button
+            size="3"
+            variant="solid"
+            onClick={() => setIsCreateOpen(true)}
+            style={{
+              cursor: 'pointer',
+              fontWeight: 600,
+              padding: '0 28px',
+              height: 44,
+              fontSize: 15,
+              background:
+                'linear-gradient(135deg, var(--accent-9), var(--accent-10))',
+              boxShadow: '0 8px 20px -4px var(--accent-a6)',
+            }}
+          >
+            <PlusIcon width="18" height="18" /> Crear mi primer proyecto
+          </Button>
+
+          <div css={styles.featuresGrid}>
+            <div css={styles.featureCard}>
+              <Flex
+                align="center"
+                gap="2"
+                style={{ color: 'var(--accent-11)' }}
+              >
+                <LayersIcon width="18" height="18" />
+                <Text size="2" weight="bold">
+                  Modelado Visual
+                </Text>
+              </Flex>
+              <Text size="1" color="gray">
+                Diseña entidades, tipos de datos, claves foráneas y relaciones
+                con facilidad.
+              </Text>
+            </div>
+
+            <div css={styles.featureCard}>
+              <Flex
+                align="center"
+                gap="2"
+                style={{ color: 'var(--accent-11)' }}
+              >
+                <LightningBoltIcon width="18" height="18" />
+                <Text size="2" weight="bold">
+                  IA Copilot
+                </Text>
+              </Flex>
+              <Text size="1" color="gray">
+                Describe tu modelo en lenguaje natural y deja que la IA genere
+                las tablas.
+              </Text>
+            </div>
+
+            <div css={styles.featureCard}>
+              <Flex
+                align="center"
+                gap="2"
+                style={{ color: 'var(--accent-11)' }}
+              >
+                <RocketIcon width="18" height="18" />
+                <Text size="2" weight="bold">
+                  Multi-Dialecto
+                </Text>
+              </Flex>
+              <Text size="1" color="gray">
+                Exporta e importa DDL compatible con PostgreSQL, MySQL, SQLite y
+                más.
+              </Text>
+            </div>
+          </div>
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <div css={styles.searchEmptyCard}>
           <Flex
             align="center"
             justify="center"
             style={{
-              width: 56,
-              height: 56,
+              width: 52,
+              height: 52,
               borderRadius: 16,
               background: 'var(--gray-4)',
               color: 'var(--gray-10)',
               marginBottom: 16,
             }}
           >
-            <CubeIcon width="28" height="28" />
+            <MagnifyingGlassIcon width="24" height="24" />
           </Flex>
           <Heading size="4" mb="1" weight="medium">
-            {searchQuery.trim()
-              ? 'No hay proyectos que coincidan con la búsqueda'
-              : 'Aún no tienes ningún proyecto'}
+            No se encontraron proyectos
           </Heading>
-          <Text size="2" color="gray" mb="4" style={{ maxWidth: 360 }}>
-            {searchQuery.trim()
-              ? 'Intenta con otro término o limpia el filtro de búsqueda.'
-              : 'Comienza creando tu primer proyecto para modelar tablas y generar esquemas SQL.'}
+          <Text size="2" color="gray" mb="4">
+            No hay proyectos que coincidan con &ldquo;{searchQuery}&rdquo;.
           </Text>
           <Button
-            size="3"
-            onClick={() => {
-              if (searchQuery.trim()) {
-                setSearchQuery('');
-              } else {
-                setIsCreateOpen(true);
-              }
-            }}
+            size="2"
+            variant="soft"
+            color="gray"
+            onClick={() => setSearchQuery('')}
             style={{ cursor: 'pointer' }}
           >
-            {searchQuery.trim()
-              ? 'Limpiar búsqueda'
-              : '+ Crear mi primer proyecto'}
+            Limpiar búsqueda
           </Button>
-        </Card>
+        </div>
       ) : (
         <div css={styles.grid}>
           {filteredProjects.map(project => (

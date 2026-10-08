@@ -182,3 +182,111 @@ export const userPill = css`
   background-color: var(--gray-3);
   border: 1px solid var(--gray-a4);
 `;
+
+const pulse = keyframes`
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.25; }
+`;
+
+export const skeletonGrid = css`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+`;
+
+export const skeletonCard = css`
+  min-height: 195px;
+  border-radius: 14px;
+  background-color: var(--gray-3);
+  border: 1px solid var(--gray-a3);
+  animation: ${pulse} 1.6s ease-in-out infinite;
+`;
+
+export const onboardingContainer = css`
+  max-width: 800px;
+  margin: 32px auto 60px auto;
+  width: 100%;
+  padding: 60px 48px;
+  border-radius: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface, var(--gray-2));
+  border: 1px solid var(--gray-a4);
+  box-shadow:
+    0 20px 48px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px var(--gray-a3);
+  backdrop-filter: blur(12px);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+`;
+
+export const onboardingHighlight = css`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--accent-9) 0%,
+    var(--accent-11) 50%,
+    var(--accent-8) 100%
+  );
+`;
+
+export const onboardingIconWrapper = css`
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--accent-3), var(--accent-5));
+  border: 1px solid var(--accent-a6);
+  color: var(--accent-11);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 28px -6px var(--accent-a5);
+`;
+
+export const featuresGrid = css`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 44px;
+  width: 100%;
+  text-align: left;
+`;
+
+export const featureCard = css`
+  padding: 18px 20px;
+  border-radius: 14px;
+  background-color: var(--gray-3);
+  border: 1px solid var(--gray-a3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--accent-a5);
+    background-color: var(--gray-4);
+  }
+`;
+
+export const searchEmptyCard = css`
+  padding: 56px 32px;
+  border-radius: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface, var(--gray-2));
+  border: 1px dashed var(--gray-a5);
+  margin-top: 16px;
+`;

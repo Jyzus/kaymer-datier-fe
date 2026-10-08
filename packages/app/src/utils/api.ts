@@ -188,8 +188,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       parsedErr = { error: errText };
     }
     throw new Error(
-      parsedErr.error ||
-        parsedErr.message ||
+      parsedErr.message ||
+        parsedErr.error ||
         `HTTP error! status: ${response.status}`
     );
   }
@@ -249,7 +249,7 @@ export const api = {
 
   createApiKey: (
     name: string,
-    scope_type: string = 'subscription',
+    scope_type: string = 'account',
     tenant_id?: string
   ) =>
     request<{

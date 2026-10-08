@@ -128,10 +128,12 @@ authRouter.post('/api-keys', async (req, res) => {
   }
   try {
     const { name, scope_type, tenant_id } = req.body;
+    const effectiveScope =
+      scope_type === 'subscription' && tenant_id ? 'subscription' : 'account';
     const result = await authService.createApiKey(token, {
-      name: name || 'API Key',
-      scope_type: scope_type || 'account',
-      tenant_id,
+      name: name?.trim() || 'API Key',
+      scope_type: effectiveScope,
+      tenant_id: effectiveScope === 'subscription' ? tenant_id : undefined,
     });
     return res.status(result.status).json(result.body);
   } catch (error: any) {

@@ -347,6 +347,46 @@ export function mergeDDL(currentSql: string, newSql: string): string {
   return mergedStatements.join(';\n\n') + ';';
 }
 
+export function normalizePostgreSqlDdl(sql: string): string {
+  // Strip comments
+  let clean = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // Remove standalone non-table/non-alter statements: CREATE EXTENSION, CREATE TYPE, SET, etc.
+  clean = clean.replace(/CREATE\s+EXTENSION[\s\S]*?;/gi, '');
+  clean = clean.replace(/CREATE\s+TYPE[\s\S]*?;/gi, '');
+  clean = clean.replace(/SET\s+[\s\S]*?;/gi, '');
+
+  // Strip table-level and column-level CHECK constraints with balanced parentheses
+  let result = '';
+  let i = 0;
+  while (i < clean.length) {
+    const constraintCheckMatch = clean
+      .substring(i)
+      .match(/^[,\s]*CONSTRAINT\s+["'`\w]+\s+CHECK\s*\(/i);
+    const inlineCheckMatch = clean.substring(i).match(/^[,\s]*CHECK\s*\(/i);
+
+    const match = constraintCheckMatch || inlineCheckMatch;
+    if (match) {
+      const matchLen = match[0].length;
+      let depth = 1;
+      let j = i + matchLen;
+      while (j < clean.length && depth > 0) {
+        if (clean[j] === '(') depth++;
+        else if (clean[j] === ')') depth--;
+        j++;
+      }
+      i = j;
+      continue;
+    }
+    result += clean[i];
+    i++;
+  }
+
+  // Clean any trailing commas before closing parenthesis: , \s* ) -> \n)
+  result = result.replace(/,\s*\)/g, '\n)');
+  return result;
+}
+
 export interface ConvertSqlOptions {
   existingSchemaJson?: string;
   dialect?: string;
@@ -365,7 +405,11 @@ export function sqlToSchemaJson(
 
   const tableUIMap = new Map<string, TableUIState>();
   let baseSchemaSettings: any = null;
-  let effectiveSql = sql;
+  const cleanedInputSql =
+    targetDialect === 'postgresql' || targetDialect === 'postgres'
+      ? normalizePostgreSqlDdl(sql)
+      : sql;
+  let effectiveSql = cleanedInputSql;
 
   if (options?.existingSchemaJson && options.existingSchemaJson.trim() !== '') {
     try {
@@ -726,7 +770,19 @@ export function schemaJsonToSql(schemaJson: string, dialect?: string): string {
           parts.push('AUTO_INCREMENT');
         }
       } else if (c.default && c.default.trim() !== '') {
-        parts.push(`DEFAULT ${c.default.trim()}`);
+        const rawDefault = c.default.trim();
+        const isAlreadyQuoted =
+          (rawDefault.startsWith("'") && rawDefault.endsWith("'")) ||
+          (rawDefault.startsWith('"') && rawDefault.endsWith('"'));
+        const isFuncOrKeywordOrNum =
+          /^(now\(\)|gen_random_uuid\(\)|current_timestamp|current_date|null|true|false|\d+(\.\d+)?)$/i.test(
+            rawDefault
+          );
+        const formattedDefault =
+          isAlreadyQuoted || isFuncOrKeywordOrNum
+            ? rawDefault
+            : `'${rawDefault.replace(/'/g, "''")}'`;
+        parts.push(`DEFAULT ${formattedDefault}`);
       }
 
       if (bHas(c.options, ColumnOption.unique)) {

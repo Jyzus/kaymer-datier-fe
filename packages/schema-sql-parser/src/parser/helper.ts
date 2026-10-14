@@ -52,6 +52,7 @@ export const isAutoincrementValue = createValueEqual('AUTOINCREMENT');
 export const isIfValue = createValueEqual('IF');
 export const isExistsValue = createValueEqual('EXISTS');
 export const isOnlyValue = createValueEqual('ONLY');
+export const isCheckValue = createValueEqual('CHECK');
 
 export const isAutoIncrementValue = (tokens: Token[]) => {
   const isAuto_increment = isAuto_incrementValue(tokens);

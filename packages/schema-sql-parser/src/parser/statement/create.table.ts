@@ -1,6 +1,7 @@
 import {
   isAscValue,
   isAutoIncrementValue,
+  isCheckValue,
   isCommaToken,
   isCommentValue,
   isConstraintValue,
@@ -60,14 +61,18 @@ export function createTableParser(tokens: Token[], $pos: RefPos) {
     let token = tokens[$pos.value];
 
     if (isLeftParent($pos.value)) {
-      $pos.value++;
-      const { columns, indexes, foreignKeys } = createTableColumnsParser(
-        tokens,
-        $pos
-      );
-      ast.columns = columns;
-      ast.indexes = indexes;
-      ast.foreignKeys = foreignKeys;
+      if (ast.columns.length === 0) {
+        $pos.value++;
+        const { columns, indexes, foreignKeys } = createTableColumnsParser(
+          tokens,
+          $pos
+        );
+        ast.columns = columns;
+        ast.indexes = indexes;
+        ast.foreignKeys = foreignKeys;
+      } else {
+        $pos.value++;
+      }
       continue;
     }
 
@@ -114,6 +119,7 @@ function createTableColumnsParser(
   const isRightParent = isRightParentToken(tokens);
   const isComma = isCommaToken(tokens);
   const isConstraint = isConstraintValue(tokens);
+  const isCheck = isCheckValue(tokens);
   const isIndex = isIndexValue(tokens);
   const isPrimary = isPrimaryValue(tokens);
   const isForeign = isForeignValue(tokens);
@@ -154,6 +160,7 @@ function createTableColumnsParser(
       isString($pos.value) &&
       !column.name &&
       !isConstraint($pos.value) &&
+      !isCheck($pos.value) &&
       !isPrimary($pos.value) &&
       !isForeign($pos.value) &&
       !isUnique($pos.value) &&
@@ -165,14 +172,44 @@ function createTableColumnsParser(
       continue;
     }
 
-    if (isLeftParent($pos.value)) {
-      token = tokens[++$pos.value];
-
-      while (isToken() && !isRightParent($pos.value)) {
-        token = tokens[++$pos.value];
-      }
-
+    if (isCheck($pos.value)) {
       $pos.value++;
+      if (isLeftParent($pos.value)) {
+        let depth = 1;
+        $pos.value++;
+        while (isToken() && depth > 0) {
+          if (isLeftParent($pos.value)) {
+            depth++;
+          } else if (isRightParent($pos.value)) {
+            depth--;
+          }
+          if (depth > 0) {
+            $pos.value++;
+          }
+        }
+        if (isRightParent($pos.value)) {
+          $pos.value++;
+        }
+      }
+      continue;
+    }
+
+    if (isLeftParent($pos.value)) {
+      let depth = 1;
+      $pos.value++;
+      while (isToken() && depth > 0) {
+        if (isLeftParent($pos.value)) {
+          depth++;
+        } else if (isRightParent($pos.value)) {
+          depth--;
+        }
+        if (depth > 0) {
+          $pos.value++;
+        }
+      }
+      if (isRightParent($pos.value)) {
+        $pos.value++;
+      }
       continue;
     }
 
@@ -320,8 +357,31 @@ function createTableColumnsParser(
       token = tokens[++$pos.value];
 
       if (isString($pos.value)) {
-        column.default = token.value;
+        let defaultVal = token.value;
         $pos.value++;
+
+        if (isLeftParent($pos.value)) {
+          defaultVal += '(';
+          let depth = 1;
+          $pos.value++;
+          while (isToken() && depth > 0) {
+            if (isLeftParent($pos.value)) {
+              depth++;
+            } else if (isRightParent($pos.value)) {
+              depth--;
+            }
+            if (depth > 0) {
+              defaultVal += tokens[$pos.value].value;
+              $pos.value++;
+            }
+          }
+          defaultVal += ')';
+          if (isRightParent($pos.value)) {
+            $pos.value++;
+          }
+        }
+
+        column.default = defaultVal;
       }
 
       continue;

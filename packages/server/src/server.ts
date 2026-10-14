@@ -1,7 +1,7 @@
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -227,12 +227,12 @@ app.get('/api/projects/:projectId/schemas', async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/schemas - Create a new schema in a project (account-isolated)
+// POST /api/projects/:projectId/schemas - Create a new schema in a project or return existing if name matches (account-isolated)
 app.post('/api/projects/:projectId/schemas', async (req, res) => {
   try {
     const { projectId } = req.params;
     const { name } = req.body;
-    if (!name) {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ error: 'Name is required' });
     }
 
@@ -241,17 +241,46 @@ app.post('/api/projects/:projectId/schemas', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const id = crypto.randomUUID();
+    const trimmedName = name.trim();
+    // Check if schema with same name already exists in project
+    const existing = await db
+      .select()
+      .from(schema.schemas)
+      .where(
+        and(
+          eq(schema.schemas.projectId, projectId),
+          sql`LOWER(${schema.schemas.name}) = LOWER(${trimmedName})`
+        )
+      );
+
     const now = new Date();
+    if (existing.length > 0) {
+      const current = existing[0];
+      await db
+        .update(schema.schemas)
+        .set({ updatedAt: now })
+        .where(eq(schema.schemas.id, current.id));
+      await db
+        .update(schema.projects)
+        .set({ updatedAt: now })
+        .where(eq(schema.projects.id, projectId));
+      return res.status(200).json({ ...current, updatedAt: now });
+    }
+
+    const id = crypto.randomUUID();
     const newSchema = {
       id,
       projectId,
-      name,
+      name: trimmedName,
       value: '', // start with an empty editor state
       createdAt: now,
       updatedAt: now,
     };
     await db.insert(schema.schemas).values(newSchema);
+    await db
+      .update(schema.projects)
+      .set({ updatedAt: now })
+      .where(eq(schema.projects.id, projectId));
     res.status(201).json(newSchema);
   } catch (error) {
     console.error('Error creating schema:', error);
@@ -259,16 +288,16 @@ app.post('/api/projects/:projectId/schemas', async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/schemas/from-sql - Create a new schema directly from DDL SQL (account-isolated)
+// POST /api/projects/:projectId/schemas/from-sql - Create a new schema directly from DDL SQL or upsert if exists (account-isolated)
 app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { name, sql, dialect } = req.body;
+    const { name, sql: ddlSql, dialect } = req.body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ error: 'Schema name is required' });
     }
-    if (!sql || typeof sql !== 'string' || sql.trim() === '') {
+    if (!ddlSql || typeof ddlSql !== 'string' || ddlSql.trim() === '') {
       return res.status(400).json({ error: 'SQL DDL content is required' });
     }
 
@@ -277,15 +306,51 @@ app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Convert SQL DDL to ERD Schema v3 JSON
-    const schemaValueJson = sqlToSchemaJson(sql, { dialect });
+    const trimmedName = name.trim();
+    const existing = await db
+      .select()
+      .from(schema.schemas)
+      .where(
+        and(
+          eq(schema.schemas.projectId, projectId),
+          sql`LOWER(${schema.schemas.name}) = LOWER(${trimmedName})`
+        )
+      );
+
+    const now = new Date();
+    // Convert SQL DDL to ERD Schema v3 JSON, preserving positions if existing
+    const schemaValueJson = sqlToSchemaJson(ddlSql, {
+      dialect,
+      existingSchemaJson: existing[0]?.value,
+    });
+
+    if (existing.length > 0) {
+      const current = existing[0];
+      await db
+        .update(schema.schemas)
+        .set({
+          value: schemaValueJson,
+          updatedAt: now,
+        })
+        .where(eq(schema.schemas.id, current.id));
+
+      await db
+        .update(schema.projects)
+        .set({ updatedAt: now })
+        .where(eq(schema.projects.id, projectId));
+
+      return res.status(200).json({
+        ...current,
+        value: schemaValueJson,
+        updatedAt: now,
+      });
+    }
 
     const id = crypto.randomUUID();
-    const now = new Date();
     const newSchema = {
       id,
       projectId,
-      name: name.trim(),
+      name: trimmedName,
       value: schemaValueJson,
       createdAt: now,
       updatedAt: now,

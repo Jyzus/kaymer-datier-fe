@@ -39,8 +39,9 @@ import {
   useUpdateProject,
   useUpdateProjects,
 } from '@/atoms/modules/project';
-import { api, ApiKeyItem, getCurrentUser } from '@/utils/api';
+import { api, getCurrentUser } from '@/utils/api';
 
+import { ApiKeyModal } from './ApiKeyModal';
 import * as styles from './Dashboard.styles';
 
 const Dashboard: React.FC = () => {
@@ -72,66 +73,6 @@ const Dashboard: React.FC = () => {
 
   // API Keys Modal State
   const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
-  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
-  const [newKeyName, setNewKeyName] = useState('');
-  const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
-  const [apiKeyLoading, setApiKeyLoading] = useState(false);
-  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
-
-  const handleOpenApiKeys = async () => {
-    setIsApiKeyOpen(true);
-    setCreatedKey(null);
-    setCopiedKey(false);
-    setApiKeyError(null);
-    try {
-      setApiKeyLoading(true);
-      const res = await api.getApiKeys();
-      setApiKeys(res.keys || []);
-    } catch (err: any) {
-      setApiKeyError(err.message || 'Error al cargar API keys');
-    } finally {
-      setApiKeyLoading(false);
-    }
-  };
-
-  const handleCreateApiKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newKeyName.trim()) return;
-    try {
-      setApiKeyLoading(true);
-      setApiKeyError(null);
-      const res = await api.createApiKey(newKeyName.trim(), 'account');
-      setCreatedKey(res.api_key);
-      setCopiedKey(false);
-      setNewKeyName('');
-      const list = await api.getApiKeys();
-      setApiKeys(list.keys || []);
-    } catch (err: any) {
-      setApiKeyError(err.message || 'Error al generar la API key');
-    } finally {
-      setApiKeyLoading(false);
-    }
-  };
-
-  const handleCopyKey = () => {
-    if (!createdKey) return;
-    navigator.clipboard.writeText(createdKey);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2500);
-  };
-
-  const handleRevokeApiKey = async (id: string) => {
-    if (confirm('¿Revocar esta API key permanentemente?')) {
-      try {
-        await api.revokeApiKey(id);
-        const list = await api.getApiKeys();
-        setApiKeys(list.keys || []);
-      } catch (err: any) {
-        alert(err.message || 'Error revocando API key');
-      }
-    }
-  };
 
   useEffect(() => {
     updateProjects();
@@ -248,172 +189,20 @@ const Dashboard: React.FC = () => {
         </Flex>
 
         <Flex align="center" gap="3" wrap="wrap">
-          {/* API Keys Dialog */}
-          <Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
-            <Dialog.Trigger>
-              <Button
-                size="3"
-                variant="surface"
-                color="gray"
-                onClick={handleOpenApiKeys}
-                style={{ cursor: 'pointer', fontWeight: 500 }}
-              >
-                <LockClosedIcon width="15" height="15" />
-                API Keys
-              </Button>
-            </Dialog.Trigger>
-            <Dialog.Content style={{ maxWidth: 620, borderRadius: 16 }}>
-              <Dialog.Title>Gestión de API Keys (M2M)</Dialog.Title>
-              <Dialog.Description size="2" mb="4">
-                Administra tus claves de acceso para conectar Planifier Docs,
-                scripts de migración y servicios externos.
-              </Dialog.Description>
+          {/* API Keys Trigger Button */}
+          <Button
+            size="3"
+            variant="surface"
+            color="gray"
+            onClick={() => setIsApiKeyOpen(true)}
+            style={{ cursor: 'pointer', fontWeight: 500 }}
+          >
+            <LockClosedIcon width="15" height="15" />
+            API Keys
+          </Button>
 
-              {apiKeyError && (
-                <Callout.Root color="red" mb="3" size="1">
-                  <Callout.Icon>
-                    <ExclamationTriangleIcon />
-                  </Callout.Icon>
-                  <Callout.Text>{apiKeyError}</Callout.Text>
-                </Callout.Root>
-              )}
-
-              {createdKey && (
-                <Callout.Root color="green" mb="3">
-                  <Callout.Text>
-                    <Flex direction="column" gap="2">
-                      <div>
-                        <strong>¡Nueva API Key generada con éxito!</strong>
-                        <br />
-                        <Text size="1" color="gray">
-                          Guárdala en un lugar seguro ahora. Por seguridad, no
-                          se volverá a mostrar en texto claro:
-                        </Text>
-                      </div>
-                      <Flex align="center" gap="2">
-                        <code
-                          style={{
-                            userSelect: 'all',
-                            wordBreak: 'break-all',
-                            flex: 1,
-                            padding: '8px 12px',
-                            background: 'var(--green-3)',
-                            border: '1px solid var(--green-6)',
-                            borderRadius: 6,
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                          }}
-                        >
-                          {createdKey}
-                        </code>
-                        <Button
-                          type="button"
-                          size="2"
-                          variant="solid"
-                          color={copiedKey ? 'green' : 'gray'}
-                          onClick={handleCopyKey}
-                          style={{ cursor: 'pointer', flexShrink: 0 }}
-                        >
-                          {copiedKey ? (
-                            <>
-                              <CheckIcon width="16" height="16" /> Copiada
-                            </>
-                          ) : (
-                            <>
-                              <CopyIcon width="16" height="16" /> Copiar
-                            </>
-                          )}
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </Callout.Text>
-                </Callout.Root>
-              )}
-
-              <form onSubmit={handleCreateApiKey} style={{ marginBottom: 20 }}>
-                <Flex gap="2">
-                  <TextField.Input
-                    placeholder="Nombre de la clave (ej. Planifier Integration)"
-                    value={newKeyName}
-                    onChange={e => setNewKeyName(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={apiKeyLoading || !newKeyName.trim()}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {apiKeyLoading ? 'Generando...' : 'Generar Clave'}
-                  </Button>
-                </Flex>
-              </form>
-
-              <Text size="2" weight="bold" mb="2" as="div">
-                Claves Activas
-              </Text>
-
-              {apiKeys.length === 0 ? (
-                <Text size="2" color="gray">
-                  No tienes API keys generadas actualmente.
-                </Text>
-              ) : (
-                <Table.Root size="1">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Nombre</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Prefijo</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Ámbito</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Acciones</Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {apiKeys.map(k => (
-                      <Table.Row key={k.id}>
-                        <Table.Cell>{k.name}</Table.Cell>
-                        <Table.Cell>
-                          <Badge color="gray">{k.key_prefix}...</Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge
-                            color={k.scope_type === 'account' ? 'cyan' : 'blue'}
-                          >
-                            {k.scope_type === 'account'
-                              ? 'Cuenta global'
-                              : k.scope_type}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Button
-                            size="1"
-                            variant="ghost"
-                            color="red"
-                            type="button"
-                            onClick={() => handleRevokeApiKey(k.id)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            Revocar
-                          </Button>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table.Root>
-              )}
-
-              <Flex justify="end" mt="4">
-                <Dialog.Close>
-                  <Button
-                    variant="soft"
-                    color="gray"
-                    type="button"
-                    style={{ cursor: 'pointer' }}
-                  >
-                    Cerrar
-                  </Button>
-                </Dialog.Close>
-              </Flex>
-            </Dialog.Content>
-          </Dialog.Root>
+          {/* New Modern API Keys Modal */}
+          <ApiKeyModal open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen} />
 
           {/* Nuevo Proyecto Dialog */}
           <Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>

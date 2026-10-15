@@ -1,7 +1,6 @@
 import './styles.css';
 import 'core-js/stable';
 
-import * as Sentry from '@sentry/react';
 import { Provider } from 'jotai';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,14 +18,6 @@ import { AuthGuard } from '@/routes/auth/AuthGuard';
 import LoginPage from '@/routes/auth/Login';
 import Root from '@/routes/root/Root';
 import { store } from '@/store';
-
-if (import.meta.env.MODE === 'production') {
-  Sentry.init({
-    dsn: 'https://77d8b1a5cdead25c1dea4978fba38a70@o245231.ingest.us.sentry.io/4506887372668928',
-    integrations: [Sentry.browserTracingIntegration()],
-    tracesSampleRate: 1.0,
-  });
-}
 
 const router = createBrowserRouter([
   {

@@ -64,14 +64,17 @@ const REFRESH_TOKEN_KEY = 'datier_refresh_token';
 const USER_KEY = 'datier_user';
 
 export function getAccessToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
 export function getRefreshToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export function getCurrentUser(): User | null {
+  if (typeof localStorage === 'undefined') return null;
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
@@ -86,19 +89,23 @@ export function setAuth(data: {
   refresh_token?: string;
   user?: User;
 }) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-  if (data.refresh_token) {
-    localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
-  }
-  if (data.user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+    }
+    if (data.user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    }
   }
 }
 
 export function clearAuth() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }
 }
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -173,7 +180,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         headers,
       });
     } else {
-      if (window.location.pathname !== '/login') {
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname !== '/login'
+      ) {
         window.location.href = '/login';
       }
     }
@@ -239,7 +249,9 @@ export const api = {
       }
     }
     clearAuth();
-    window.location.href = '/login';
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   },
 
   getMe: () => request<{ userId: string; tenantId: string }>('/auth/me'),

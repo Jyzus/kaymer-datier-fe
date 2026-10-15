@@ -1,4 +1,5 @@
 import {
+  isAlterValue,
   isAscValue,
   isAutoIncrementValue,
   isCheckValue,
@@ -6,6 +7,7 @@ import {
   isCommentValue,
   isConstraintValue,
   isCreateTableIfNotExists,
+  isCreateValue,
   isDataType,
   isDefaultValue,
   isDescValue,
@@ -20,6 +22,7 @@ import {
   isPrimaryValue,
   isReferencesValue,
   isRightParentToken,
+  isSemicolonToken,
   isStringToken,
   isUniqueValue,
 } from '@/parser/helper';
@@ -479,6 +482,10 @@ export function parserForeignKeyParser(
   const isString = isStringToken(tokens);
   const isLeftParent = isLeftParentToken(tokens);
   const isRightParent = isRightParentToken(tokens);
+  const isComma = isCommaToken(tokens);
+  const isSemicolon = isSemicolonToken(tokens);
+  const isCreate = isCreateValue(tokens);
+  const isAlter = isAlterValue(tokens);
   const isReferences = isReferencesValue(tokens);
   const isPeriod = isPeriodToken(tokens);
   const isKey = isKeyValue(tokens);
@@ -539,6 +546,17 @@ export function parserForeignKeyParser(
           token = tokens[++$pos.value];
         }
       }
+    }
+
+    while (
+      isToken() &&
+      !isComma($pos.value) &&
+      !isRightParent($pos.value) &&
+      !isSemicolon($pos.value) &&
+      !isCreate($pos.value) &&
+      !isAlter($pos.value)
+    ) {
+      $pos.value++;
     }
 
     if (

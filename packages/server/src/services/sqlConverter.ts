@@ -227,11 +227,29 @@ function mergeTables({
     const table = findByName(tables, foreignKey.name);
     if (!table) return;
 
-    table.foreignKeys.push({
-      columnNames: foreignKey.columnNames,
-      refTableName: foreignKey.refTableName,
-      refColumnNames: foreignKey.refColumnNames,
-    });
+    const isDuplicate = table.foreignKeys.some(
+      (fk: any) =>
+        fk.refTableName.toLowerCase() ===
+          foreignKey.refTableName.toLowerCase() &&
+        fk.columnNames.length === foreignKey.columnNames.length &&
+        fk.columnNames.every(
+          (cn: string, i: number) =>
+            cn.toLowerCase() === foreignKey.columnNames[i].toLowerCase()
+        ) &&
+        fk.refColumnNames.length === foreignKey.refColumnNames.length &&
+        fk.refColumnNames.every(
+          (rcn: string, i: number) =>
+            rcn.toLowerCase() === foreignKey.refColumnNames[i].toLowerCase()
+        )
+    );
+
+    if (!isDuplicate) {
+      table.foreignKeys.push({
+        columnNames: foreignKey.columnNames,
+        refTableName: foreignKey.refTableName,
+        refColumnNames: foreignKey.refColumnNames,
+      });
+    }
   });
 
   return tables;
@@ -319,6 +337,24 @@ export function getCreateTableName(statement: string): string | null {
     .toLowerCase();
 }
 
+export function getForeignKeySignature(statement: string): string | null {
+  const match = statement.match(
+    /ALTER\s+TABLE\s+(?:ONLY\s+)?([a-zA-Z0-9_"`\.-]+)[\s\S]*?FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z0-9_"`\.-]+)\s*\(([^)]+)\)/i
+  );
+  if (!match) return null;
+  const table = match[1]
+    .replace(/["'`\[\]]/g, '')
+    .trim()
+    .toLowerCase();
+  const cols = match[2].replace(/["'`\[\]\s]/g, '').toLowerCase();
+  const refTable = match[3]
+    .replace(/["'`\[\]]/g, '')
+    .trim()
+    .toLowerCase();
+  const refCols = match[4].replace(/["'`\[\]\s]/g, '').toLowerCase();
+  return `${table}(${cols})->${refTable}(${refCols})`;
+}
+
 export function mergeDDL(currentSql: string, newSql: string): string {
   const currentStatements = splitSqlStatements(currentSql);
   const newStatements = splitSqlStatements(newSql);
@@ -327,6 +363,7 @@ export function mergeDDL(currentSql: string, newSql: string): string {
 
   for (const newStmt of newStatements) {
     const newTableName = getCreateTableName(newStmt);
+    const newFkSig = getForeignKeySignature(newStmt);
 
     if (newTableName) {
       const existingIdx = mergedStatements.findIndex(stmt => {
@@ -339,8 +376,27 @@ export function mergeDDL(currentSql: string, newSql: string): string {
       } else {
         mergedStatements.push(newStmt);
       }
+    } else if (newFkSig) {
+      const existingIdx = mergedStatements.findIndex(stmt => {
+        const sig = getForeignKeySignature(stmt);
+        return sig === newFkSig;
+      });
+
+      if (existingIdx !== -1) {
+        mergedStatements[existingIdx] = newStmt;
+      } else {
+        mergedStatements.push(newStmt);
+      }
     } else {
-      mergedStatements.push(newStmt);
+      const cleanNew = newStmt.trim().toLowerCase();
+      const existingIdx = mergedStatements.findIndex(
+        stmt => stmt.trim().toLowerCase() === cleanNew
+      );
+      if (existingIdx !== -1) {
+        mergedStatements[existingIdx] = newStmt;
+      } else {
+        mergedStatements.push(newStmt);
+      }
     }
   }
 
@@ -604,29 +660,51 @@ export function sqlToSchemaJson(
         matchedStartCols.length > 0 &&
         matchedEndCols.length === matchedStartCols.length
       ) {
-        const relId = crypto.randomUUID();
-        const newRel = {
-          id: relId,
-          identification: false,
-          relationshipType: RelationshipType.ZeroN,
-          start: {
-            tableId: startTable.id,
-            columnIds: matchedStartCols.map(c => c.id),
-          },
-          end: {
-            tableId: endTable.id,
-            columnIds: matchedEndCols.map(c => c.id),
-          },
-          meta: {
-            updateAt: Date.now(),
-            createAt: Date.now(),
-          },
-        };
+        const startColIds = matchedStartCols.map(c => c.id);
+        const endColIds = matchedEndCols.map(c => c.id);
 
-        schema.doc.relationshipIds.push(relId);
-        query(schema.collections)
+        const alreadyExists = query(schema.collections)
           .collection('relationshipEntities')
-          .setOne(newRel);
+          .selectAll()
+          .some(
+            (r: any) =>
+              r.start.tableId === startTable.id &&
+              r.end.tableId === endTable.id &&
+              r.start.columnIds.length === startColIds.length &&
+              r.start.columnIds.every(
+                (id: string, idx: number) => id === startColIds[idx]
+              ) &&
+              r.end.columnIds.length === endColIds.length &&
+              r.end.columnIds.every(
+                (id: string, idx: number) => id === endColIds[idx]
+              )
+          );
+
+        if (!alreadyExists) {
+          const relId = crypto.randomUUID();
+          const newRel = {
+            id: relId,
+            identification: false,
+            relationshipType: RelationshipType.ZeroN,
+            start: {
+              tableId: startTable.id,
+              columnIds: startColIds,
+            },
+            end: {
+              tableId: endTable.id,
+              columnIds: endColIds,
+            },
+            meta: {
+              updateAt: Date.now(),
+              createAt: Date.now(),
+            },
+          };
+
+          schema.doc.relationshipIds.push(relId);
+          query(schema.collections)
+            .collection('relationshipEntities')
+            .setOne(newRel);
+        }
       }
     });
   });

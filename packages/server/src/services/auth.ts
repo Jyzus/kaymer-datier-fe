@@ -6,11 +6,19 @@ dotenv.config();
 export const DEFAULT_TENANT_ID =
   process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
 const MS_AUTH_URL =
-  process.env.MS_AUTH_URL || 'http://datier-ms-auth-prod:8085';
+  process.env.MS_AUTH_URL && process.env.MS_AUTH_URL !== 'http://ms-auth:8085'
+    ? process.env.MS_AUTH_URL
+    : 'http://datier-ms-auth-prod:8085';
 const AUTH_JWKS_URL =
-  process.env.AUTH_JWKS_URL || `${MS_AUTH_URL}/.well-known/jwks.json`;
+  process.env.AUTH_JWKS_URL &&
+  !process.env.AUTH_JWKS_URL.includes('//ms-auth:8085')
+    ? process.env.AUTH_JWKS_URL
+    : `${MS_AUTH_URL}/.well-known/jwks.json`;
 const AUTH_INTROSPECT_URL =
-  process.env.AUTH_INTROSPECT_URL || `${MS_AUTH_URL}/v1/auth/introspect`;
+  process.env.AUTH_INTROSPECT_URL &&
+  !process.env.AUTH_INTROSPECT_URL.includes('//ms-auth:8085')
+    ? process.env.AUTH_INTROSPECT_URL
+    : `${MS_AUTH_URL}/v1/auth/introspect`;
 
 let jwksRemote: any = null;
 function getJWKS() {

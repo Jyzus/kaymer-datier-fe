@@ -403,6 +403,160 @@ export function mergeDDL(currentSql: string, newSql: string): string {
   return mergedStatements.join(';\n\n') + ';';
 }
 
+/**
+ * Simplifies and deduplicates DDL SQL text, removing redundant table definitions,
+ * duplicate foreign key constraints, and phantom columns.
+ */
+export function simplifyDDL(sql: string): string {
+  if (!sql || sql.trim() === '') return '';
+
+  const statements = splitSqlStatements(sql);
+  const tableMap = new Map<string, string>();
+  const fkMap = new Map<string, string>();
+  const indexMap = new Map<string, string>();
+  const otherStatements: string[] = [];
+
+  for (const stmt of statements) {
+    const trimmed = stmt.trim();
+    if (!trimmed) continue;
+
+    const tableName = getCreateTableName(trimmed);
+    const fkSig = getForeignKeySignature(trimmed);
+
+    if (tableName) {
+      // Clean phantom ON columns if present
+      let cleanStmt = trimmed.replace(
+        /,\s*ON\s+(?:VARCHAR|SET|TEXT)[^,\)]*/gi,
+        ''
+      );
+      cleanStmt = cleanStmt.replace(
+        /\bON\s+(?:VARCHAR|SET|TEXT)[^,\)]*,\s*/gi,
+        ''
+      );
+      tableMap.set(tableName, cleanStmt);
+    } else if (fkSig) {
+      fkMap.set(fkSig, trimmed);
+    } else if (/CREATE\s+(?:UNIQUE\s+)?INDEX/i.test(trimmed)) {
+      const cleanIdx = trimmed.replace(
+        /CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+ON/i,
+        'CREATE $1INDEX idx_auto ON'
+      );
+      const idxMatch = cleanIdx.match(
+        /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)\s+ON\s+([a-zA-Z0-9_"`\.-]+)/i
+      );
+      if (idxMatch) {
+        const idxKey = `${idxMatch[2].toLowerCase()}::${idxMatch[1].toLowerCase()}`;
+        indexMap.set(idxKey, cleanIdx);
+      } else {
+        indexMap.set(cleanIdx.toLowerCase(), cleanIdx);
+      }
+    } else {
+      otherStatements.push(trimmed);
+    }
+  }
+
+  const result: string[] = [
+    ...Array.from(tableMap.values()),
+    ...Array.from(fkMap.values()),
+    ...Array.from(indexMap.values()),
+    ...otherStatements,
+  ];
+
+  return result.join(';\n\n') + ';';
+}
+
+/**
+ * Sanitizes schema JSON: eliminates phantom ON columns and duplicate relationship entities.
+ */
+export function sanitizeSchemaJson(input: string | any): string {
+  if (!input) return '{}';
+  let data: any;
+  if (typeof input === 'string') {
+    if (input.trim() === '' || input === '{}') return input;
+    try {
+      data = JSON.parse(input);
+    } catch {
+      return input;
+    }
+  } else {
+    data = input;
+  }
+
+  if (!data || !data.collections) {
+    return typeof input === 'string' ? input : JSON.stringify(data);
+  }
+
+  const tables = data.collections.tableEntities || {};
+  const cols = data.collections.tableColumnEntities || {};
+  const rels = data.collections.relationshipEntities || {};
+  const doc = data.doc || { relationshipIds: [], tableIds: [] };
+
+  // 1. Remove phantom ON columns
+  const onColIds = new Set<string>();
+  for (const [cid, col] of Object.entries<any>(cols)) {
+    if (col && col.name === 'ON') {
+      onColIds.add(cid);
+      delete cols[cid];
+    }
+  }
+  for (const table of Object.values<any>(tables)) {
+    if (table) {
+      table.columnIds = (table.columnIds || []).filter(
+        (cid: string) => !onColIds.has(cid)
+      );
+      table.seqColumnIds = (table.seqColumnIds || []).filter(
+        (cid: string) => !onColIds.has(cid)
+      );
+    }
+  }
+
+  // 2. Deduplicate relationships
+  const seenRels = new Set<string>();
+  const validRelIds: string[] = [];
+  const allRelIds = [...(doc.relationshipIds || [])];
+
+  for (const rid of allRelIds) {
+    const rel = rels[rid];
+    if (!rel || !rel.start || !rel.end) {
+      delete rels[rid];
+      continue;
+    }
+    const sTid = rel.start.tableId;
+    const eTid = rel.end.tableId;
+    if (!tables[sTid] || !tables[eTid]) {
+      delete rels[rid];
+      continue;
+    }
+    const sCids = (rel.start.columnIds || []).join(',');
+    const eCids = (rel.end.columnIds || []).join(',');
+    const sig = `${sTid}(${sCids})->${eTid}(${eCids})`;
+    if (seenRels.has(sig)) {
+      delete rels[rid];
+    } else {
+      seenRels.add(sig);
+      validRelIds.push(rid);
+    }
+  }
+  doc.relationshipIds = validRelIds;
+
+  // 3. Fix invalid index names like 'IF'
+  const indexEntities = data.collections.indexEntities || {};
+  const indexColEntities = data.collections.indexColumnEntities || {};
+  for (const idx of Object.values<any>(indexEntities)) {
+    if (idx && (idx.name === 'IF' || idx.name === 'if')) {
+      const table = tables[idx.tableId];
+      const tableName = table ? table.name : 'table';
+      const indexColId = (idx.indexColumnIds || [])[0];
+      const indexCol = indexColId ? indexColEntities[indexColId] : null;
+      const colId = indexCol ? indexCol.columnId : null;
+      const colName = colId && cols[colId] ? cols[colId].name : 'col';
+      idx.name = `idx_${tableName}_${colName}`;
+    }
+  }
+
+  return JSON.stringify(data);
+}
+
 export function normalizePostgreSqlDdl(sql: string): string {
   // Strip comments
   let clean = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -413,8 +567,8 @@ export function normalizePostgreSqlDdl(sql: string): string {
   clean = clean.replace(/SET\s+[\s\S]*?;/gi, '');
 
   // Strip table-level and column-level CHECK constraints with balanced parentheses
-  let result = '';
   let i = 0;
+  let result = '';
   while (i < clean.length) {
     const constraintCheckMatch = clean
       .substring(i)
@@ -446,6 +600,7 @@ export function normalizePostgreSqlDdl(sql: string): string {
 export interface ConvertSqlOptions {
   existingSchemaJson?: string;
   dialect?: string;
+  merge?: boolean;
 }
 
 /**
@@ -461,10 +616,11 @@ export function sqlToSchemaJson(
 
   const tableUIMap = new Map<string, TableUIState>();
   let baseSchemaSettings: any = null;
+  const simplified = simplifyDDL(sql);
   const cleanedInputSql =
     targetDialect === 'postgresql' || targetDialect === 'postgres'
-      ? normalizePostgreSqlDdl(sql)
-      : sql;
+      ? normalizePostgreSqlDdl(simplified)
+      : simplified;
   let effectiveSql = cleanedInputSql;
 
   if (options?.existingSchemaJson && options.existingSchemaJson.trim() !== '') {
@@ -489,12 +645,14 @@ export function sqlToSchemaJson(
         }
       });
 
-      const currentSql = schemaJsonToSql(
-        options.existingSchemaJson,
-        targetDialect
-      );
-      if (currentSql.trim() !== '') {
-        effectiveSql = mergeDDL(currentSql, sql);
+      if (options?.merge) {
+        const currentSql = schemaJsonToSql(
+          options.existingSchemaJson,
+          targetDialect
+        );
+        if (currentSql.trim() !== '') {
+          effectiveSql = mergeDDL(currentSql, cleanedInputSql);
+        }
       }
     } catch (err) {
       console.warn(
@@ -767,7 +925,7 @@ export function sqlToSchemaJson(
     });
   });
 
-  return toJson(schema);
+  return sanitizeSchemaJson(toJson(schema));
 }
 
 /**

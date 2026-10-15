@@ -216,32 +216,96 @@ const renderMarkdown = (text: string) => {
   return elements;
 };
 
+const getCreateTableName = (statement: string): string | null => {
+  const match = statement.match(
+    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)/i
+  );
+  if (!match) return null;
+  return match[1]
+    .replace(/["'`\[\]]/g, '')
+    .trim()
+    .toLowerCase();
+};
+
+const getForeignKeySignature = (statement: string): string | null => {
+  const match = statement.match(
+    /ALTER\s+TABLE\s+(?:ONLY\s+)?([a-zA-Z0-9_"`\.-]+)\s+ADD\s+(?:CONSTRAINT\s+([a-zA-Z0-9_"`\.-]+)\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z0-9_"`\.-]+)\s*\(([^)]+)\)/i
+  );
+  if (!match) return null;
+  const clean = (s: string) => s.replace(/["'`\[\]\s]/g, '').toLowerCase();
+  const table = clean(match[1]);
+  const foreignKey = clean(match[3]);
+  const targetTable = clean(match[4]);
+  const primaryKey = clean(match[5]);
+  return `${table}(${foreignKey})->${targetTable}(${primaryKey})`;
+};
+
+const simplifyDDL = (sql: string): string => {
+  if (!sql || sql.trim() === '') return '';
+  const statements = sql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  const tableMap = new Map<string, string>();
+  const fkMap = new Map<string, string>();
+  const indexMap = new Map<string, string>();
+  const otherStatements: string[] = [];
+
+  for (const stmt of statements) {
+    const tableName = getCreateTableName(stmt);
+    const fkSig = getForeignKeySignature(stmt);
+    if (tableName) {
+      let cleanStmt = stmt.replace(
+        /,\s*ON\s+(?:VARCHAR|SET|TEXT)[^,\)]*/gi,
+        ''
+      );
+      cleanStmt = cleanStmt.replace(
+        /\bON\s+(?:VARCHAR|SET|TEXT)[^,\)]*,\s*/gi,
+        ''
+      );
+      tableMap.set(tableName, cleanStmt);
+    } else if (fkSig) {
+      fkMap.set(fkSig, stmt);
+    } else if (/CREATE\s+(?:UNIQUE\s+)?INDEX/i.test(stmt)) {
+      const idxMatch = stmt.match(
+        /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)\s+ON\s+([a-zA-Z0-9_"`\.-]+)/i
+      );
+      if (idxMatch) {
+        const idxKey = `${idxMatch[2].toLowerCase()}::${idxMatch[1].toLowerCase()}`;
+        indexMap.set(idxKey, stmt);
+      } else {
+        indexMap.set(stmt.toLowerCase(), stmt);
+      }
+    } else {
+      otherStatements.push(stmt);
+    }
+  }
+
+  return (
+    [
+      ...Array.from(tableMap.values()),
+      ...Array.from(fkMap.values()),
+      ...Array.from(indexMap.values()),
+      ...otherStatements,
+    ].join(';\n\n') + ';'
+  );
+};
+
 const mergeDDL = (currentSql: string, newSql: string): string => {
-  const splitStatements = (sql: string): string[] => {
-    return sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-  };
-
-  const getCreateTableName = (statement: string): string | null => {
-    const match = statement.match(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_"`\.-]+)/i
-    );
-    if (!match) return null;
-    return match[1]
-      .replace(/["'`\[\]]/g, '')
-      .trim()
-      .toLowerCase();
-  };
-
-  const currentStatements = splitStatements(currentSql);
-  const newStatements = splitStatements(newSql);
+  const currentStatements = currentSql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  const newStatements = newSql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 
   const mergedStatements = [...currentStatements];
 
   for (const newStmt of newStatements) {
     const newTableName = getCreateTableName(newStmt);
+    const newFkSig = getForeignKeySignature(newStmt);
 
     if (newTableName) {
       const existingIdx = mergedStatements.findIndex(stmt => {
@@ -254,12 +318,23 @@ const mergeDDL = (currentSql: string, newSql: string): string => {
       } else {
         mergedStatements.push(newStmt);
       }
+    } else if (newFkSig) {
+      const existingIdx = mergedStatements.findIndex(stmt => {
+        const sig = getForeignKeySignature(stmt);
+        return sig === newFkSig;
+      });
+
+      if (existingIdx !== -1) {
+        mergedStatements[existingIdx] = newStmt;
+      } else {
+        mergedStatements.push(newStmt);
+      }
     } else {
       mergedStatements.push(newStmt);
     }
   }
 
-  return mergedStatements.join(';\n\n') + ';';
+  return simplifyDDL(mergedStatements.join(';\n\n') + ';');
 };
 
 export const AiChatPanel: React.FC = () => {

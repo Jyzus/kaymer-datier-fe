@@ -156,6 +156,16 @@ export const modalButton = css`
     }
   }
 
+  &.replace {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--foreground, #fff);
+    border: 1px solid var(--border, #555);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.15);
+    }
+  }
+
   &.merge {
     background-color: var(--active, #3880ff);
     color: #fff;

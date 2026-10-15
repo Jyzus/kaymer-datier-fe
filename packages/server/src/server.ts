@@ -12,7 +12,12 @@ import { runMigrations } from './db/migrate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { authRouter } from './routes/auth.js';
 import { getAiClient } from './services/ai.js';
-import { schemaJsonToSql, sqlToSchemaJson } from './services/sqlConverter.js';
+import {
+  sanitizeSchemaJson,
+  schemaJsonToSql,
+  simplifyDDL,
+  sqlToSchemaJson,
+} from './services/sqlConverter.js';
 
 dotenv.config();
 
@@ -319,9 +324,11 @@ app.post('/api/projects/:projectId/schemas/from-sql', async (req, res) => {
 
     const now = new Date();
     // Convert SQL DDL to ERD Schema v3 JSON, preserving positions if existing
-    const schemaValueJson = sqlToSchemaJson(ddlSql, {
+    const simplifiedSql = simplifyDDL(ddlSql);
+    const schemaValueJson = sqlToSchemaJson(simplifiedSql, {
       dialect,
       existingSchemaJson: existing[0]?.value,
+      merge: req.body.merge === true || req.query.merge === 'true',
     });
 
     if (existing.length > 0) {
@@ -381,6 +388,10 @@ app.get('/api/schemas/:id', async (req, res) => {
       return res.status(404).json({ error: 'Schema not found' });
     }
 
+    if (currentSchema.value) {
+      currentSchema.value = sanitizeSchemaJson(currentSchema.value);
+    }
+
     res.json(currentSchema);
   } catch (error) {
     console.error('Error retrieving schema:', error);
@@ -401,7 +412,7 @@ app.put('/api/schemas/:id', async (req, res) => {
 
     const updateValues: any = { updatedAt: new Date() };
     if (name !== undefined) updateValues.name = name;
-    if (value !== undefined) updateValues.value = value;
+    if (value !== undefined) updateValues.value = sanitizeSchemaJson(value);
 
     await db
       .update(schema.schemas)
@@ -456,7 +467,7 @@ app.get('/api/schemas/:id/sql', async (req, res) => {
 app.put('/api/schemas/:id/sql', async (req, res) => {
   try {
     const { id } = req.params;
-    const { sql, dialect } = req.body;
+    const { sql, dialect, merge } = req.body;
 
     if (!sql || typeof sql !== 'string' || sql.trim() === '') {
       return res.status(400).json({ error: 'SQL content is required' });
@@ -467,10 +478,12 @@ app.put('/api/schemas/:id/sql', async (req, res) => {
       return res.status(404).json({ error: 'Schema not found' });
     }
 
-    // Merge DDL and preserve existing table UI coordinates
-    const mergedJson = sqlToSchemaJson(sql, {
+    // Merge or replace DDL and preserve existing table UI coordinates
+    const simplifiedSql = simplifyDDL(sql);
+    const mergedJson = sqlToSchemaJson(simplifiedSql, {
       existingSchemaJson: currentSchema.value,
       dialect,
+      merge: merge === true || req.query.merge === 'true',
     });
 
     const now = new Date();

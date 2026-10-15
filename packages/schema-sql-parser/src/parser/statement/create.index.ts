@@ -1,6 +1,7 @@
 import {
   isAscValue,
   isCommaToken,
+  isCreateIndexIfNotExists,
   isCreateUniqueIndex,
   isDescValue,
   isIndexValue,
@@ -32,6 +33,7 @@ export function createIndexParser(tokens: Token[], $pos: RefPos) {
   const isDesc = isDescValue(tokens);
   const isAsc = isAscValue(tokens);
   const createUniqueIndex = isCreateUniqueIndex(tokens);
+  const createIndexIfNotExists = isCreateIndexIfNotExists(tokens);
 
   const isToken = () => $pos.value < tokens.length;
 
@@ -49,10 +51,15 @@ export function createIndexParser(tokens: Token[], $pos: RefPos) {
     let token = tokens[$pos.value];
 
     if (isIndex($pos.value)) {
-      token = tokens[++$pos.value];
+      $pos.value++;
 
-      if (isString($pos.value)) {
-        ast.name = token.value;
+      if (createIndexIfNotExists($pos.value)) {
+        $pos.value += 3;
+      }
+
+      if (isToken() && isString($pos.value)) {
+        ast.name = tokens[$pos.value].value;
+        $pos.value++;
       }
 
       continue;

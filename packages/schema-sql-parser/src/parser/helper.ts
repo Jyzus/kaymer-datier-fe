@@ -114,6 +114,13 @@ export const isCreateIndex = (tokens: Token[]) => {
     (isCreate(pos) && isIndex(pos + 1)) || createUniqueIndex(pos);
 };
 
+export const isCreateIndexIfNotExists = (tokens: Token[]) => {
+  const isIf = isIfValue(tokens);
+  const isNot = isNotValue(tokens);
+  const isExists = isExistsValue(tokens);
+  return (pos: number) => isIf(pos) && isNot(pos + 1) && isExists(pos + 2);
+};
+
 export const isAlterTable = (tokens: Token[]) => {
   const isAlter = isAlterValue(tokens);
   const isTable = isTableValue(tokens);

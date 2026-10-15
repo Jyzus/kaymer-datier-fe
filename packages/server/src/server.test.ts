@@ -179,6 +179,7 @@ CREATE TABLE order_items (
   const updatedMergedJson = sqlToSchemaJson(updateDdl, {
     existingSchemaJson: JSON.stringify(parsedVal),
     dialect: 'postgresql',
+    merge: true,
   });
 
   await db

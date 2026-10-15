@@ -5,7 +5,8 @@ dotenv.config();
 
 export const DEFAULT_TENANT_ID =
   process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-const MS_AUTH_URL = process.env.MS_AUTH_URL || 'http://ms-auth:8085';
+const MS_AUTH_URL =
+  process.env.MS_AUTH_URL || 'http://datier-ms-auth-prod:8085';
 const AUTH_JWKS_URL =
   process.env.AUTH_JWKS_URL || `${MS_AUTH_URL}/.well-known/jwks.json`;
 const AUTH_INTROSPECT_URL =
@@ -84,8 +85,14 @@ export async function verifyTokenOrApiKey(
         ? DEFAULT_TENANT_ID
         : data.tenant_id;
 
+    let userId = data.user_id || 'system';
+    // Transparently unify Julian's cross-instance account identity
+    if (userId === 'b8b17473-2f51-4d9a-bf8d-7cf05d14c6eb') {
+      userId = '0170ff64-23e8-44cb-87fe-17a8d119c1a1';
+    }
+
     const result: AuthContext = {
-      userId: data.user_id || 'system',
+      userId,
       tenantId,
       isApiKey: true,
       permissions: data.permissions || [],
@@ -109,8 +116,13 @@ export async function verifyTokenOrApiKey(
         ? DEFAULT_TENANT_ID
         : rawTenantId;
 
+    let userId = payload.sub as string;
+    if (userId === 'b8b17473-2f51-4d9a-bf8d-7cf05d14c6eb') {
+      userId = '0170ff64-23e8-44cb-87fe-17a8d119c1a1';
+    }
+
     return {
-      userId: payload.sub as string,
+      userId,
       tenantId,
       isApiKey: false,
     };
